@@ -4,6 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export HF_HUB_ENABLE_HF_TRANSFER=1
+export PIP_BREAK_SYSTEM_PACKAGES=1   # pods ship torch in the system python (PEP 668); keep it, add our deps next to it
 
 nvidia-smi --query-gpu=name,memory.total --format=csv
 python -c "import torch; print('torch', torch.__version__, 'cuda', torch.version.cuda)"
