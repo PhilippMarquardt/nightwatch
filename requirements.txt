@@ -11,3 +11,5 @@ pyyaml
 onnx
 onnxruntime-gpu
 wandb
+opencv-python-headless
+pandas
