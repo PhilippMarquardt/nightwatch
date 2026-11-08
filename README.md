@@ -16,7 +16,7 @@ posture and range. This window was chosen as the forest's best; the forest's ove
 
 | system | all | night | unseen forest | held-out lab |
 |---|---|---|---|---|
-| VLM zero-shot, RGB | 0.07 | – | – | – |
+| VLM zero-shot, RGB (600-frame subset) | 0.07 | – | – | – |
 | VLM fine-tuned, RGB + thermal + LiDAR | 0.17 | 0.11 | 0.00 | **0.79** |
 | … + camera-dropout 0.5 | 0.24 | 0.16 | 0.00 | 0.76 |
 | fast head, 12M (seed 0 / seed 1) | 0.37 / 0.40 | 0.34 / 0.38 | **0.31 / 0.36** | 0.56 / 0.55 |
