@@ -149,7 +149,8 @@ class TriSARSFT(Dataset):
             elif self.mode == "fusion_l" and r < d_rgb + d_t + d_l:
                 rgb, th, li = _apply_cond(rgb, th, li, "lidar_off")
         task, prompt, answer = sample_task(persons, rng, wh)
-        text = self.proc.apply_chat_template(messages(self.mode, prompt), add_generation_prompt=True, tokenize=False)
+        text = self.proc.apply_chat_template(messages(self.mode, prompt), add_generation_prompt=True, tokenize=False,
+                                               enable_thinking=False)  # direct answers, no CoT preamble
         enc = self.proc(text=[text], images=[rgb], return_tensors="pt")
         ans = self.proc.tokenizer(answer, add_special_tokens=False)["input_ids"] + self.end_ids
         ids = torch.cat([enc["input_ids"][0], torch.tensor(ans)])
@@ -172,5 +173,6 @@ class TriSARInfer(Dataset):
     def __getitem__(self, i):
         f = self.frames[i]
         rgb, th, li = _apply_cond(*load_triplet(self.dir, f["id"]), self.cond)
-        text = self.proc.apply_chat_template(messages(self.mode, self.prompt), add_generation_prompt=True, tokenize=False)
+        text = self.proc.apply_chat_template(messages(self.mode, self.prompt), add_generation_prompt=True, tokenize=False,
+                                               enable_thinking=False)  # direct answers, no CoT preamble
         return {"id": f["id"], "text": text, "images": [rgb], "thermal": thermal_tensor(th), "lidar": lidar_tensor(li)}

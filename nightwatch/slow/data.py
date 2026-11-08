@@ -72,7 +72,8 @@ class SFTDataset(Dataset):
         q = T.to_qwen(boxes, w, h)
         task, prompt, answer = T.sample_task(q, rng)
         msgs = build_messages(self.mode, prompt)
-        text = self.proc.apply_chat_template(msgs, add_generation_prompt=True, tokenize=False)
+        text = self.proc.apply_chat_template(msgs, add_generation_prompt=True, tokenize=False,
+                                               enable_thinking=False)  # direct answers, no CoT preamble
         enc = self.proc(text=[text], images=images_for(self.mode, rgb, ir), return_tensors="pt")
         ans = self.proc.tokenizer(answer, add_special_tokens=False)["input_ids"] + self.end_ids
         ids = torch.cat([enc["input_ids"][0], torch.tensor(ans)])
@@ -122,7 +123,8 @@ class InferDataset(Dataset):
         if self.mode == "rgb" and self.cond == "rgb_off":
             pass  # rgb model with dead camera: sees black (the honest failure mode)
         msgs = build_messages(self.mode, self.prompt)
-        text = self.proc.apply_chat_template(msgs, add_generation_prompt=True, tokenize=False)
+        text = self.proc.apply_chat_template(msgs, add_generation_prompt=True, tokenize=False,
+                                               enable_thinking=False)  # direct answers, no CoT preamble
         return {"id": rec.id, "text": text, "images": images_for(self.mode, rgb, ir), "thermal": thermal_tensor(ir)}
 
 

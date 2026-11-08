@@ -70,7 +70,8 @@ def main():
                 crop, boxes, (w, h) = T.random_crop(r.boxes, W, H, rng)
             rgb, ir = load_pair(r, a.root, crop)
             msgs = build_messages("fusion", T.EVAL_DETECT_PROMPT)
-            texts.append(proc.apply_chat_template(msgs, add_generation_prompt=True, tokenize=False))
+            texts.append(proc.apply_chat_template(msgs, add_generation_prompt=True, tokenize=False,
+                                               enable_thinking=False))  # direct answers, no CoT preamble
             imgs += images_for("fusion", rgb, ir)
             thermals.append(thermal_tensor(ir))
             gts.append(T.to_qwen(boxes, w, h))
