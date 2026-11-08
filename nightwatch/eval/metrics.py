@@ -82,8 +82,11 @@ def detect_metrics(preds, gts, ids, bucket, score_thr=None):
     return out
 
 
-def score_file(pred_path, index_path, split="test", score_thr=None):
+def score_file(pred_path, index_path, split="test", score_thr=None, ids_from=None):
     recs = load_index(index_path, (split,))
+    if ids_from:     # same-subset scoring against another run's frames
+        keep = {json.loads(l)["id"] for l in open(ids_from)}
+        recs = [r for r in recs if r.id in keep]
     gts = {r.id: r.boxes for r in recs}
     slices = image_slices(recs)
     bucket = height_buckets(recs)
@@ -121,9 +124,10 @@ def main():
     ap.add_argument("--index", default="data/index.json")
     ap.add_argument("--split", default="test")
     ap.add_argument("--score-thr", type=float, default=None)
+    ap.add_argument("--ids-from", default=None, help="only score frames present in this prediction file")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
-    res = score_file(a.pred, a.index, a.split, a.score_thr)
+    res = score_file(a.pred, a.index, a.split, a.score_thr, a.ids_from)
     json.dump(res, open(a.out, "w"), indent=1)
     for k, v in res.items():
         allm = v.get("all", {})

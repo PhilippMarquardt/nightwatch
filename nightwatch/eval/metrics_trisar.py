@@ -17,7 +17,12 @@ import numpy as np
 from nightwatch.data import tasks as T
 from nightwatch.slow.data_trisar import POSE3, load_frames
 
-RANGE_BINS = [(0, 10, "0-10m"), (10, 20, "10-20m"), (20, 1e9, "20m+")]
+RANGE_BINS = [(0, 10, "0-10m"), (10, 20, "10-20m"), (20, 40, "20-40m"), (40, 60, "40-60m"), (60, 1e9, "60m+")]
+OBS_MIN_POINTS, OBS_MAX_RANGE = 5, 60.0   # a person is "observable" if it has >=5 LiDAR points and lies inside the render range
+
+
+def observable(gp):
+    return gp.get("num_points", 0) >= OBS_MIN_POINTS and gp["range_m"] < OBS_MAX_RANGE
 
 
 def range_bin(r):
@@ -32,6 +37,7 @@ def score_report(preds, frames, ids, score_thr=None):
     per_bin = defaultdict(lambda: [0, 0])
     per_bin_derr = defaultdict(list)
     occ = [0, 0]
+    obs = [0, 0]
     for i in ids:
         g = frames[i]["persons"]
         p = preds.get(i, {}).get("persons", [])
@@ -56,12 +62,15 @@ def score_report(preds, frames, ids, score_thr=None):
             per_bin[b][1] += 1
             if gp.get("occluded"):
                 occ[1] += 1
+            if observable(gp):
+                obs[1] += 1
             if gp["pose"] == "lying":
                 lying_n += 1
             if j not in match:
                 continue
             per_bin[b][0] += 1
             occ[0] += int(bool(gp.get("occluded")))
+            obs[0] += int(observable(gp))
             q = p[match[j]]
             gt_pose = POSE3[gp["pose"]]
             if q.get("pose") is not None:
@@ -78,7 +87,9 @@ def score_report(preds, frames, ids, score_thr=None):
            "lying_recall": lying_hit / lying_n if lying_n else float("nan"),
            "dist_mae_m": float(np.mean(d_err)) if d_err else float("nan"),
            "dist_rel_err": float(np.mean(d_rel)) if d_rel else float("nan"),
-           "occluded_recall": occ[0] / occ[1] if occ[1] else float("nan")}
+           "occluded_recall": occ[0] / occ[1] if occ[1] else float("nan"),
+           "observable_recall": obs[0] / obs[1] if obs[1] else float("nan"),
+           "observable_frac": obs[1] / max(1, sum(len(frames[i]["persons"]) for i in ids))}
     for b, (h, n) in per_bin.items():
         out[f"recall_{b}"] = h / max(1, n)
         if per_bin_derr[b]:
@@ -98,8 +109,11 @@ def slices(frames):
     return {k: v for k, v in sl.items() if v}
 
 
-def score_file(pred_path, fused_dir, split="test", score_thr=None):
+def score_file(pred_path, fused_dir, split="test", score_thr=None, ids_from=None):
     frames = {f["id"]: f for f in load_frames(fused_dir, {split})}
+    if ids_from:     # same-subset scoring: restrict to the frames another run was evaluated on
+        keep = {json.loads(l)["id"] for l in open(ids_from)}
+        frames = {k: v for k, v in frames.items() if k in keep}
     rows = defaultdict(dict)
     for line in open(pred_path):
         d = json.loads(line)
@@ -120,7 +134,7 @@ def score_file(pred_path, fused_dir, split="test", score_thr=None):
                 g = [any(p["pose"] == "lying" for p in frames[i]["persons"]) for i in ids]
                 res[key][sname] = {"n_images": len(ids), "accuracy": float(np.mean([a == b for a, b in zip(v, g)]))}
             elif task == "nearest":
-                errs = []
+                errs, fa, n_empty = [], 0, 0
                 for i in ids:
                     g = [p["range_m"] for p in frames[i]["persons"]]
                     t = preds[i]["text"].strip().lower()
@@ -132,7 +146,11 @@ def score_file(pred_path, fused_dir, split="test", score_thr=None):
                         errs.append(abs(v - min(g)))
                     elif g:
                         errs.append(min(g))           # said "none" with someone there: full miss
-                res[key][sname] = {"n_images": len(ids), "nearest_mae_m": float(np.mean(errs)) if errs else float("nan")}
+                    if not g:
+                        n_empty += 1
+                        fa += int(v is not None)       # a distance for nobody = hallucination
+                res[key][sname] = {"n_images": len(ids), "nearest_mae_m": float(np.mean(errs)) if errs else float("nan"),
+                                   "nearest_false_alarm_rate": fa / n_empty if n_empty else float("nan")}
             elif task == "count":
                 v = [T.parse_int(preds[i]["text"]) for i in ids]
                 g = [len(frames[i]["persons"]) for i in ids]
@@ -146,9 +164,10 @@ def main():
     ap.add_argument("--fused-dir", default="data/trisar_fused")
     ap.add_argument("--split", default="test")
     ap.add_argument("--score-thr", type=float, default=None)
+    ap.add_argument("--ids-from", default=None, help="only score frames present in this prediction file")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
-    res = score_file(a.pred, a.fused_dir, a.split, a.score_thr)
+    res = score_file(a.pred, a.fused_dir, a.split, a.score_thr, a.ids_from)
     json.dump(res, open(a.out, "w"), indent=1)
     for k, v in res.items():
         print(k, {m: round(x, 3) for m, x in v.get("all", {}).items() if isinstance(x, float)})

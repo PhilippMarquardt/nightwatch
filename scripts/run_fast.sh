@@ -24,6 +24,7 @@ for v in ${VARIANTS//,/ }; do   # space- or comma-separated
     oracle_rgb)  run fast_oracle_rgb --splits labeled,unlabeled --modal rgb ;; # sensor ablation
     oracle_t)    run fast_oracle_t   --splits labeled,unlabeled --modal t ;;
     distill)     run fast_distill    --splits labeled,unlabeled --labels runs/pseudo_labels_unlabeled.json ;;  # fused slow head labels the rest
+    selfdistill) run fast_selfdistill --splits labeled,unlabeled --labels runs/pseudo_labels_unlabeled_self.json ;;  # control: student labels its own pool
     distill_rgb) run fast_distill_rgbteacher --splits labeled,unlabeled --labels runs/pseudo_labels_unlabeled_rgb.json ;;  # RGB-only teacher
   esac
 done

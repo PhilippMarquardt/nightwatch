@@ -14,7 +14,9 @@ import json
 import math
 import sys
 
-KEY_METRIC = {"detect": "f1", "count": "count_exact", "zone": "accuracy"}
+KEY_METRIC = {"detect": "f1", "report": "f1", "count": "count_exact", "zone": "accuracy", "lying": "accuracy",
+              "nearest": "nearest_mae_m"}
+LOWER_BETTER = {"nearest_mae_m", "dist_mae_m", "count_mae"}
 
 
 def main():
@@ -27,14 +29,20 @@ def main():
     cand, base = json.load(open(a.candidate)), json.load(open(a.baseline))
     rows, fails = [], 0
     for key in sorted(set(cand) & set(base)):
-        metric = KEY_METRIC[key.split("/")[0].split("_")[0]]
+        metric = KEY_METRIC.get(key.split("/")[0].split("_")[0])
+        if metric is None:
+            continue
         for sl in sorted(set(cand[key]) & set(base[key])):
             c, b = cand[key][sl].get(metric), base[key][sl].get(metric)
-            if c is None or b is None:
+            if c is None or b is None or c != c or b != b:
                 continue
             n = max(1, cand[key][sl].get("n_images", 1))
-            tol = max(a.floor, 2 * math.sqrt(max(b * (1 - b), 1e-4) / n))
-            status = "FAIL" if c < b - tol else ("better" if c > b + tol else "same")
+            if metric in LOWER_BETTER:          # errors in metres etc.: lower is better, absolute floor 0.25
+                tol = max(0.25, 0.1 * abs(b))
+                status = "FAIL" if c > b + tol else ("better" if c < b - tol else "same")
+            else:
+                tol = max(a.floor, 2 * math.sqrt(max(b * (1 - b), 1e-4) / n))
+                status = "FAIL" if c < b - tol else ("better" if c > b + tol else "same")
             fails += status == "FAIL"
             rows.append({"check": key, "slice": sl, "metric": metric, "candidate": c, "baseline": b, "tol": tol, "status": status})
     w = max(len(r["check"] + r["slice"]) for r in rows) + 3 if rows else 20
