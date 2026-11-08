@@ -25,6 +25,7 @@ if [[ " $STAGES " == *" zeroshot "* ]]; then
         --tasks detect --conds normal --bs $IBS --workers $W --out $OUT/pred_test.jsonl
     has $OUT/pred_test_robust.jsonl || python -m nightwatch.slow.infer --model $MODEL --mode $MODE --split test \
         --tasks detect --conds rgb_off,thermal_off --limit $SUB --bs $IBS --workers $W --out $OUT/pred_test_robust.jsonl
+    has $OUT/pred_test_reason.jsonl || python -m nightwatch.slow.infer --model $MODEL --mode $MODE --split test         --tasks count,zone_left,zone_center,zone_right --conds normal --limit $SUB --bs $IBS --workers $W --out $OUT/pred_test_reason.jsonl
   done
 fi
 
@@ -46,8 +47,9 @@ if [[ " $STAGES " == *" eval "* ]]; then
     has $OUT/pred_test.jsonl || python -m nightwatch.slow.infer --model $MODEL --mode $MODE --adapter $OUT --split test \
         --tasks detect --conds normal --bs $IBS --workers $W --out $OUT/pred_test.jsonl
     has $OUT/pred_test_robust.jsonl || python -m nightwatch.slow.infer --model $MODEL --mode $MODE --adapter $OUT --split test \
-        --tasks detect,count,zone_left,zone_center,zone_right --conds rgb_off,thermal_off,normal --limit $SUB --bs $IBS --workers $W \
-        --out $OUT/pred_test_robust.jsonl
+        --tasks detect --conds rgb_off,thermal_off --limit $SUB --bs $IBS --workers $W --out $OUT/pred_test_robust.jsonl
+    has $OUT/pred_test_reason.jsonl || python -m nightwatch.slow.infer --model $MODEL --mode $MODE --adapter $OUT --split test \
+        --tasks count,zone_left,zone_center,zone_right --conds normal --limit $SUB --bs $IBS --workers $W --out $OUT/pred_test_reason.jsonl
   done
 fi
 

@@ -39,7 +39,7 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--lr-enc", type=float, default=5e-5)
     ap.add_argument("--lr-fusion", type=float, default=2e-4)
-    ap.add_argument("--lr-gate", type=float, default=5e-3)
+    ap.add_argument("--lr-gate", type=float, default=1e-3)
     ap.add_argument("--lora-r", type=int, default=32)
     ap.add_argument("--warmup", type=int, default=30)
     ap.add_argument("--max-samples", type=int, default=0)

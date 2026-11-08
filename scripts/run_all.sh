@@ -18,5 +18,6 @@ VARIANTS="distill" bash scripts/run_fast.sh 2>&1 | tee logs/fast_b.log
 python -m nightwatch.eval.escalation 2>&1 | tee logs/escalation.log || true
 python -m nightwatch.eval.gate --candidate runs/sft_fusion/pred_test_metrics.json --baseline runs/sft_dual/pred_test_metrics.json --out runs/gate.json \
     2>&1 | tee logs/gate.log || true
+python -m nightwatch.eval.gate --candidate runs/sft_fusion/pred_test_robust_metrics.json     --baseline runs/sft_dual/pred_test_robust_metrics.json --out runs/gate_robust.json 2>&1 | tee -a logs/gate.log || true
 python -m nightwatch.report.make_report 2>&1 | tee logs/report.log
 echo "ALL DONE -> report/index.html"

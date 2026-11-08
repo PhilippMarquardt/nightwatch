@@ -50,10 +50,14 @@ class GatedProj(nn.Module):
         hidden = hidden or d
         self.norm = nn.LayerNorm(cin)
         self.mlp = nn.Sequential(nn.Linear(cin, hidden), nn.GELU(), nn.Linear(hidden, d))
-        self.gate = nn.Parameter(torch.zeros(1))  # tanh(0) = 0 -> identity at init
+        # ControlNet-style zero init: output is exactly 0 at step 0 (model == pretrained VLM), but unlike a
+        # zero *gate* the last layer still gets full-strength gradients, so fusion starts learning at once.
+        nn.init.zeros_(self.mlp[-1].weight)
+        nn.init.zeros_(self.mlp[-1].bias)
+        self.gate = nn.Parameter(torch.ones(1))   # learnable global scale, logged
 
     def forward(self, t):
-        return torch.tanh(self.gate) * self.mlp(self.norm(t))
+        return self.gate * self.mlp(self.norm(t))
 
 
 class ThermalFusion(nn.Module):
@@ -79,13 +83,21 @@ class ThermalFusion(nn.Module):
         if feats.shape[0] != po.shape[0]:
             raise RuntimeError(f"thermal tokens {feats.shape[0]} != visual tokens {po.shape[0]} "
                                f"(fusion mode needs exactly one {IMG_W}x{IMG_H} RGB image per sample)")
-        output.pooler_output = po + self.main(feats).to(po.dtype)
+        add = self.main(feats).to(po.dtype)
+        self._ratio = {"main": float(add.float().norm(dim=-1).mean() / po.float().norm(dim=-1).mean().clamp(min=1e-6))}
+        output.pooler_output = po + add
         if output.deepstack_features is not None:
-            output.deepstack_features = [d + p(feats).to(d.dtype) for d, p in zip(output.deepstack_features, self.deep)]
+            new = []
+            for i, (d, p) in enumerate(zip(output.deepstack_features, self.deep)):
+                a = p(feats).to(d.dtype)
+                self._ratio[f"deep{i}"] = float(a.float().norm(dim=-1).mean() / d.float().norm(dim=-1).mean().clamp(min=1e-6))
+                new.append(d + a)
+            output.deepstack_features = new
         return output
 
     def gate_values(self):
-        return {"main": float(torch.tanh(self.main.gate)), **{f"deep{i}": float(torch.tanh(p.gate)) for i, p in enumerate(self.deep)}}
+        """Thermal contribution as a fraction of the RGB token norm (last forward pass)."""
+        return dict(getattr(self, "_ratio", {}))
 
 
 def thermal_tensor(img_l):
