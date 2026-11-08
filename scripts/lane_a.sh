@@ -3,7 +3,7 @@
 # Priority (after review): fusion > rgb > thermal-only control > TriSAR rgb > dual > TriSAR rgb+t.
 set -uo pipefail                      # no -e: one failed step must not kill the lane
 cd "$(dirname "$0")/.."
-mkdir -p logs runs; exec 9>logs/laneA.lock; flock -n 9 || { echo "lane A already running"; exit 1; }
+mkdir -p logs runs; exec 9>logs/laneA.lock; echo "waiting for lane A lock"; flock 9
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True NW_GPU_FRAC=0.47 WORKERS=16 BS=4 ACC=4
 wait_for() { while [ ! -s "$1" ]; do [ -n "${2:-}" ] && [ -f "STOP_$2" ] && return 1; sleep 60; done; }
 on() { [ ! -f "STOP_$1" ]; }

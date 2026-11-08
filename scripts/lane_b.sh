@@ -2,7 +2,7 @@
 # Lane B (overnight): generation (eval, pseudo-labels), fast heads, LTDv2, then finalize. Resumable; cut with `touch STOP_<name>`.
 set -uo pipefail
 cd "$(dirname "$0")/.."
-mkdir -p logs runs; exec 9>logs/laneB.lock; flock -n 9 || { echo "lane B already running"; exit 1; }
+mkdir -p logs runs; exec 9>logs/laneB.lock; echo "waiting for lane B lock"; flock 9
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True NW_GPU_FRAC=0.45 WORKERS=16 IBS=64 NW_FAST_CPU=1
 wait_for() { while [ ! -s "$1" ]; do [ -n "${2:-}" ] && [ -f "STOP_$2" ] && return 1; sleep 60; done; }
 on() { [ ! -f "STOP_$1" ]; }
