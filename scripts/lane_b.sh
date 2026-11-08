@@ -21,6 +21,8 @@ if wait_for runs/sft_fusion/train_summary.json fusion; then
   python -m nightwatch.eval.escalation || true
 fi
 on self && EXTRAS=self bash scripts/run_extras.sh                                           # B6b self-training control
+on shuffle && EXTRAS=shuffle IBS=48 bash scripts/run_extras.sh                              # B6c aligned vs shuffled sensors
+on matched && EXTRAS=matched bash scripts/run_extras.sh                                     # B6d compute-matched labelled-only student
 if wait_for runs/sft_rgb/train_summary.json rgb; then
   MODES=rgb STAGES=eval EVAL_PARTS="test robust reason" TEST_LIMIT=1500 SUB=800 bash scripts/run_slow.sh        # B7
   if on rgb_teacher; then

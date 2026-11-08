@@ -38,6 +38,8 @@ def score_report(preds, frames, ids, score_thr=None):
     per_bin_derr = defaultdict(list)
     occ = [0, 0]
     obs = [0, 0]
+    joint = 0
+    n_gt = 0
     for i in ids:
         g = frames[i]["persons"]
         p = preds.get(i, {}).get("persons", [])
@@ -57,6 +59,7 @@ def score_report(preds, frames, ids, score_thr=None):
                 used[j] = True
                 match[j] = k
         tp += len(match); fp += len(p) - len(match); fn += len(g) - len(match)
+        n_gt += len(g)
         for j, gp in enumerate(g):
             b = range_bin(gp["range_m"])
             per_bin[b][1] += 1
@@ -76,6 +79,9 @@ def score_report(preds, frames, ids, score_thr=None):
             if q.get("pose") is not None:
                 pose_n += 1
                 pose_ok += int(q["pose"] == gt_pose)
+            if (q.get("pose") == gt_pose and q.get("distance") is not None
+                    and abs(q["distance"] - gp["range_m"]) <= max(1.0, 0.1 * gp["range_m"])):
+                joint += 1                     # box + posture + distance (<= max(1 m, 10 %)) all right
             if gp["pose"] == "lying" and q.get("pose") == "lying":
                 lying_hit += 1
             if q.get("distance") is not None:
@@ -89,6 +95,7 @@ def score_report(preds, frames, ids, score_thr=None):
            "dist_rel_err": float(np.mean(d_rel)) if d_rel else float("nan"),
            "occluded_recall": occ[0] / occ[1] if occ[1] else float("nan"),
            "observable_recall": obs[0] / obs[1] if obs[1] else float("nan"),
+           "joint_report_recall": joint / n_gt if n_gt else float("nan"),
            "observable_frac": obs[1] / max(1, sum(len(frames[i]["persons"]) for i in ids))}
     for b, (h, n) in per_bin.items():
         out[f"recall_{b}"] = h / max(1, n)

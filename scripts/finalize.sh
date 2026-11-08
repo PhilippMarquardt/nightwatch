@@ -10,7 +10,7 @@ STAGES=none bash scripts/run_slow.sh       # re-score LLVIP slow runs
 STAGES=none bash scripts/run_trisar.sh     # re-score TriSAR runs (finer range bins, observability, false alarms)
 
 # LLVIP fast heads: full test, plus the SAME frames the slow heads were scored on (1500 normal / 800 robust subsets)
-for r in fast_gt_labeled fast_oracle fast_distill fast_selfdistill fast_distill_rgbteacher fast_oracle_rgb fast_oracle_t; do
+for r in fast_gt_labeled fast_gt_labeled_long fast_oracle fast_distill fast_selfdistill fast_distill_rgbteacher fast_oracle_rgb fast_oracle_t; do
   [ -s runs/$r/train_summary.json ] || continue
   thr=$(thr_of $r)
   python -m nightwatch.eval.metrics --pred runs/$r/pred_test.jsonl --score-thr $thr --out runs/$r/pred_test_metrics.json > /dev/null

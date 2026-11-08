@@ -177,7 +177,11 @@ class TriSARInfer(Dataset):
 
     def __getitem__(self, i):
         f = self.frames[i]
-        rgb, th, li = _apply_cond(*load_triplet(self.dir, f["id"]), self.cond)
+        if self.cond == "sensors_shuffle":     # control: real thermal+LiDAR from another frame (misaligned)
+            rgb = load_triplet(self.dir, f["id"])[0]
+            _, th, li = load_triplet(self.dir, self.frames[(i + len(self.frames) // 2) % len(self.frames)]["id"])
+        else:
+            rgb, th, li = _apply_cond(*load_triplet(self.dir, f["id"]), self.cond)
         text = self.proc.apply_chat_template(messages(self.mode, self.prompt), add_generation_prompt=True, tokenize=False,
                                                enable_thinking=False)  # direct answers, no CoT preamble
         return {"id": f["id"], "text": text, "images": [rgb], "thermal": thermal_tensor(th), "lidar": lidar_tensor(li)}

@@ -59,6 +59,9 @@ def build_cache(fused_dir, split, out, workers=16, limit=0):
         arr.flush(); del arr
         os.replace(path + ".tmp", path)
         json.dump([f["id"] for f in frames], open(f"{out}/{split}_ids.json", "w"))
+    saved = json.load(open(f"{out}/{split}_ids.json"))
+    if saved != [f["id"] for f in frames]:
+        raise SystemExit(f"cache {out}/{split} was built for a different frame list/order - delete it and rebuild")
     return frames
 
 

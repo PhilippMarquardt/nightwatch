@@ -124,6 +124,9 @@ class InferDataset(Dataset):
             rgb = Image.new("RGB", rgb.size)
         elif self.cond == "thermal_off":
             ir = Image.new("L", ir.size)
+        elif self.cond == "thermal_shuffle":   # control: real thermal, but from another frame (misaligned)
+            other = self.recs[(i + len(self.recs) // 2) % len(self.recs)]
+            ir = load_pair(other, self.root)[1]
         if self.mode == "rgb" and self.cond == "rgb_off":
             pass  # rgb model with dead camera: sees black (the honest failure mode)
         msgs = build_messages(self.mode, self.prompt)

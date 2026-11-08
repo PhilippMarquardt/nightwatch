@@ -74,7 +74,7 @@ def main():
     xs, bxs, ns = [], [], []
     for sp in a.splits.split(","):
         gt = {r.id: r.boxes for r in load_index(a.index, (sp,))}
-        use_pseudo = bool(pseudo) and sp != "labeled"
+        use_pseudo = a.labels is not None and sp != "labeled"     # an empty labels file must NOT re-enable GT
         lab = {i: pseudo.get(i, []) for i in gt} if use_pseudo else gt
         x, bx, n, ids = load_split(a.cache, sp, dev, lab)
         if use_pseudo:   # never fall back to ground truth on the "unlabeled" sites: keep only slow-head-labelled frames

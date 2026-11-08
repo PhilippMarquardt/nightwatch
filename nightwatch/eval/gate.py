@@ -37,6 +37,7 @@ def main():
             if c is None or b is None or c != c or b != b:
                 continue
             n = max(1, cand[key][sl].get("n_images", 1))
+            n_b = base[key][sl].get("n_images", n)
             if metric in LOWER_BETTER:          # errors in metres etc.: lower is better, absolute floor 0.25
                 tol = max(0.25, 0.1 * abs(b))
                 status = "FAIL" if c > b + tol else ("better" if c < b - tol else "same")
@@ -44,12 +45,19 @@ def main():
                 tol = max(a.floor, 2 * math.sqrt(max(b * (1 - b), 1e-4) / n))
                 status = "FAIL" if c < b - tol else ("better" if c > b + tol else "same")
             fails += status == "FAIL"
-            rows.append({"check": key, "slice": sl, "metric": metric, "candidate": c, "baseline": b, "tol": tol, "status": status})
+            rows.append({"check": key, "slice": sl, "metric": metric, "candidate": c, "baseline": b, "tol": tol, "status": status,
+                         "n_candidate": n, "n_baseline": n_b, "n_mismatch": n != n_b})
     w = max(len(r["check"] + r["slice"]) for r in rows) + 3 if rows else 20
     for r in rows:
         print(f"{r['check'] + ' | ' + r['slice']:<{w}} {r['metric']:<12} {r['candidate']:.4f} vs {r['baseline']:.4f} "
               f"(tol {r['tol']:.4f})  {r['status']}")
-    verdict = "SHIP" if fails == 0 else f"BLOCKED ({fails} slice regressions)"
+    mismatched = [r for r in rows if r.get("n_mismatch")]
+    if not rows:
+        verdict, fails = "NO_DATA (fail closed)", 1
+    elif mismatched:
+        verdict, fails = f"BLOCKED ({len(mismatched)} slices scored on different frame counts)", fails + len(mismatched)
+    else:
+        verdict = "SHIP" if fails == 0 else f"BLOCKED ({fails} slice regressions)"
     print("\nGATE:", verdict)
     if a.out:
         json.dump({"verdict": verdict, "rows": rows}, open(a.out, "w"), indent=1)

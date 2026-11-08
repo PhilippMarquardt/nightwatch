@@ -115,7 +115,8 @@ def main():
         for task in a.tasks.split(","):
             for cond in a.conds.split(","):
                 if (a.mode == "rgb" and cond in ("thermal_off", "lidar_off")) or (a.mode == "fusion" and cond == "lidar_off") \
-                        or (a.mode == "thermal" and cond in ("rgb_off", "lidar_off")):
+                        or (a.mode == "thermal" and cond in ("rgb_off", "lidar_off", "thermal_shuffle")) \
+                        or (a.mode == "rgb" and cond in ("thermal_shuffle", "sensors_shuffle")):
                     continue
                 timings.append(run(model, proc, fusion, recs, a.root, a.mode, task, cond, a.bs, a.workers, fh, dev,
                                    a.dataset, a.fused_dir))
