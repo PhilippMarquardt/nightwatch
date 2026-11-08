@@ -149,8 +149,20 @@ def loss_fn(out, hm_t, reg):
 
 
 # ---------------------------------------------------------------- aug / io
+THERMAL_NORM = False   # --thermal-norm: level-match thermal per frame in train AND eval (sensor normalisation, not a test-time trick)
+
+
+def level_match(t):
+    """Per-frame thermal level match to the training distribution: median -> 135/255, p99.5 -> 235/255."""
+    flat = t.flatten(1)
+    med = flat.median(dim=1).values.view(-1, 1, 1, 1); hi = flat.quantile(0.995, dim=1).view(-1, 1, 1, 1)
+    return (135 / 255 + (t - med) * ((100 / 255) / (hi - med).clamp(min=1 / 255))).clamp(0, 1)
+
+
 def prep(x, idx_ch, cond="normal"):
     xf = x.float().div(255.0)
+    if THERMAL_NORM:
+        xf[:, 3:4] = level_match(xf[:, 3:4])
     if cond == "rgb_off":
         xf[:, :3] = 0
     elif cond == "thermal_off":
@@ -158,10 +170,7 @@ def prep(x, idx_ch, cond="normal"):
     elif cond == "lidar_off":
         xf[:, 4:] = 0
     elif cond == "thermal_stretch":     # per-frame match to the lab training distribution: median -> 135, p99.5 -> 235
-        t = xf[:, 3:4]
-        flat = t.flatten(1)
-        med = flat.median(dim=1).values.view(-1, 1, 1, 1); hi = flat.quantile(0.995, dim=1).view(-1, 1, 1, 1)
-        xf[:, 3:4] = (135 / 255 + (t - med) * ((100 / 255) / (hi - med).clamp(min=1 / 255))).clamp(0, 1)
+        xf[:, 3:4] = level_match(xf[:, 3:4])
     xf = (xf - MEAN.to(xf.device)) / STD.to(xf.device)
     return xf[:, idx_ch]
 
@@ -171,6 +180,8 @@ def augment(x, t, n, gen, idx_ch, p_drop=(0.15, 0.1, 0.1)):
     B = x.shape[0]
     dev = x.device
     xf = x.float().div_(255.0)
+    if THERMAL_NORM:
+        xf[:, 3:4] = level_match(xf[:, 3:4])
     flip = torch.rand(B, device=dev, generator=gen) < 0.5
     xf[flip] = xf[flip].flip(-1)
     t = t.clone()
@@ -217,9 +228,12 @@ def main():
     ap.add_argument("--bs", type=int, default=48)
     ap.add_argument("--lr", type=float, default=2e-3)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--thermal-norm", action="store_true", help="per-frame thermal level match in train and eval")
     ap.add_argument("--limit", type=int, default=0, help="smoke test: frames per split (use a separate --cache)")
     a = ap.parse_args()
     out_dir = f"runs/{a.name}"
+    global THERMAL_NORM
+    THERMAL_NORM = a.thermal_norm
     seed_all(a.seed)
     gpu_mem_cap()
     dev = torch.device("cuda")
@@ -305,7 +319,7 @@ def main():
         for _ in range(200):
             net(xb)
         torch.cuda.synchronize()
-    summ = {"name": a.name, "modal": a.modal, "labels": a.labels, "val_f1": best, "score_thr": thr,
+    summ = {"name": a.name, "modal": a.modal, "labels": a.labels, "thermal_norm": a.thermal_norm, "seed": a.seed, "val_f1": best, "score_thr": thr,
             "torch_latency_ms_bs1": (time.time() - t1) / 200 * 1000,
             "params_M": sum(p.numel() for p in net.parameters()) / 1e6, "train_minutes": (time.time() - t0) / 60}
     json.dump(summ, open(f"{out_dir}/train_summary.json", "w"), indent=1)

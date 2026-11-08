@@ -10,6 +10,7 @@ import json
 import numpy as np
 import torch
 
+import nightwatch.fast.trisar as FT
 from nightwatch.fast.trisar import CH, CenterNetTriSAR, predict
 
 
@@ -23,6 +24,7 @@ def main():
     d = f"runs/{a.name}"
     summ = json.load(open(f"{d}/train_summary.json"))
     idx = CH[summ["modal"]]
+    FT.THERMAL_NORM = bool(summ.get("thermal_norm", False))
     dev = torch.device("cuda")
     net = CenterNetTriSAR(len(idx), pretrained=False).to(dev).to(memory_format=torch.channels_last)
     net.load_state_dict(torch.load(f"{d}/best.pt", map_location=dev))
