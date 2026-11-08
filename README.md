@@ -40,6 +40,34 @@ A small-scale, end-to-end version of a multi-sensor perception stack for securit
 | `fast_oracle` | fast head on all GT | upper bound |
 | `fast_oracle_rgb/_t` | single-sensor ablations | what each sensor contributes |
 
+## Stage 2 — TriSAR-3D: RGB + thermal + LiDAR (CC-BY-4.0, TU Darmstadt, Oct 2026)
+
+19.7k synchronised frames from a 128-beam Ouster LiDAR, an RGB camera and a FLIR thermal camera, with 52k 3D person
+boxes and posture tags (standing, walking, sitting, lying). Everything is rendered into one reference frame, the
+undistorted thermal camera:
+
+- RGB is warped in with the infinite-depth homography. The cameras are about 10 cm apart, so residual parallax is a few
+  pixels, well under one visual token.
+- LiDAR is z-buffer projected into inverse-range, intensity and hit maps.
+- 3D boxes are projected to tight 2D boxes and keep their posture and metric range.
+
+LiDAR therefore enters the slow head exactly like thermal: its own DINOv3 encoder, added onto the same visual token grid
+through a zero-initialised projection.
+
+**Split (ours, by sequence):** test is the whole forest (an unseen site at night) plus two held-out lab sequences with
+lying persons. The official split is frame-level within sequences, which leaks near-duplicate frames.
+
+**Task:** an incident report per person, `{"bbox_2d", "pose": upright|sitting|lying, "distance_m"}`, plus "is anyone
+lying down?" and "how far is the nearest person?". Every answer is checked against the 3D labels.
+
+| id | sensors | question |
+|---|---|---|
+| `t_zs_rgb` | RGB, zero-shot | what does the stock VLM get? |
+| `t_sft_rgb` → `t_sft_fusion` → `t_sft_fusion_l` | RGB → +thermal → +LiDAR | what does each sensor add? |
+| `tf_rgb`, `tf_rgbt`, `tf_tl`, `tf_rgbtl` | fast head, same ladder | does the fast head need the camera at all? |
+
+Run it with `bash scripts/run_trisar.sh`.
+
 ## Run
 
 ```bash
