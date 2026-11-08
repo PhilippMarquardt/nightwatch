@@ -1,0 +1,290 @@
+<title>Night Watch Explorer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,400..800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: night-console. One dark world (deliberate single theme): header thesis, then viewer + readout side by side, stacked on phones. */
+:root {
+  color-scheme: dark;
+  --bg: #0d1013;          /* blue-black graphite */
+  --panel: #151a1f;
+  --raise: #1c232a;
+  --line: #2a333c;
+  --ink: #e7eaed;
+  --ink2: #9ba6b1;
+  --ink3: #6d7883;
+  --gt: #f3efe6;
+  --vlm-old: #d9922a;     /* VLM without camera-dropout */
+  --vlm: #4b95ef;         /* VLM with camera-dropout */
+  --fast: #23b07e;        /* 12M fast head */
+  --heat: #ff7a3d;        /* thermal accent, used once in the masthead */
+  --display: "Archivo", "Arial Narrow", system-ui, sans-serif;
+  --body: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+html, body { background: var(--bg); color: var(--ink); }
+body { font-family: var(--body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 40px; }
+.wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 22px; }
+header { display: grid; gap: 10px; }
+.eyebrow { font: 600 12px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink3); }
+h1 { font-family: var(--display); font-stretch: 78%; font-weight: 800; font-size: clamp(34px, 6vw, 58px); line-height: .95; margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+h1 em { font-style: normal; color: var(--heat); }
+.lede { max-width: 68ch; color: var(--ink2); margin: 0; text-wrap: pretty; }
+.kpis { display: flex; flex-wrap: wrap; gap: 8px 22px; font: 500 13px/1.3 var(--mono); color: var(--ink2); font-variant-numeric: tabular-nums; }
+.kpis b { color: var(--ink); font-weight: 500; }
+.kpis .sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: 1px; }
+
+.presets { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+.preset { text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; color: var(--ink); cursor: pointer; font: inherit; display: grid; gap: 4px; }
+.preset:hover { border-color: var(--ink3); }
+.preset[aria-pressed="true"] { border-color: var(--ink2); background: var(--raise); }
+.preset .n { font: 500 11px/1 var(--mono); color: var(--ink3); letter-spacing: .1em; }
+.preset .h { font-weight: 650; font-size: 14px; line-height: 1.3; }
+.preset .d { color: var(--ink2); font-size: 13px; line-height: 1.4; }
+
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 18px; align-items: start; }
+@media (max-width: 920px) { .main { grid-template-columns: minmax(0, 1fr); } }
+.viewer { display: grid; gap: 10px; min-width: 0; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.group { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.group > span { font: 500 11px/1 var(--mono); color: var(--ink3); letter-spacing: .1em; text-transform: uppercase; margin-right: 4px; }
+.seg { background: transparent; border: 1px solid var(--line); color: var(--ink2); border-radius: 6px; padding: 5px 10px; font: 500 13px/1.2 var(--body); cursor: pointer; }
+.seg:hover { color: var(--ink); border-color: var(--ink3); }
+.seg[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.tog { display: inline-flex; gap: 6px; align-items: center; }
+.tog .k { width: 10px; height: 10px; border-radius: 2px; border: 2px solid currentColor; }
+.tog[aria-pressed="false"] { opacity: .55; }
+.tog[aria-pressed="true"] { background: var(--raise); color: var(--ink); border-color: var(--ink3); }
+:focus-visible { outline: 2px solid var(--vlm); outline-offset: 2px; }
+
+.stage { position: relative; background: #000; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; aspect-ratio: 5 / 4; max-width: 100%; }
+canvas { width: 100%; height: 100%; display: block; }
+.stamp { position: absolute; left: 10px; top: 8px; font: 500 12px/1.3 var(--mono); color: var(--ink); background: rgb(13 16 19 / .72); padding: 4px 8px; border-radius: 4px; pointer-events: none; }
+.note { position: absolute; left: 10px; bottom: 8px; right: 10px; font: 500 12px/1.35 var(--mono); color: var(--ink2); background: rgb(13 16 19 / .78); padding: 6px 8px; border-radius: 4px; pointer-events: none; }
+.scrub { display: flex; gap: 10px; align-items: center; }
+.scrub input[type=range] { flex: 1; min-width: 0; accent-color: var(--ink2); }
+.scrub .play { width: 74px; }
+.meta { font: 500 12px/1.3 var(--mono); color: var(--ink3); font-variant-numeric: tabular-nums; }
+
+aside { display: grid; gap: 12px; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: grid; gap: 8px; min-width: 0; }
+.card h2 { margin: 0; font: 650 13px/1.2 var(--body); letter-spacing: .02em; display: flex; gap: 8px; align-items: center; }
+.card h2 .k { width: 10px; height: 10px; border-radius: 2px; }
+.verdict { font-size: 15px; font-weight: 600; line-height: 1.35; text-wrap: pretty; }
+pre { margin: 0; font: 400 12px/1.45 var(--mono); color: var(--ink2); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; white-space: pre-wrap; word-break: break-word; max-height: 190px; overflow: auto; }
+table { width: 100%; border-collapse: collapse; font: 400 12px/1.4 var(--mono); font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 3px 4px; border-bottom: 1px solid var(--line); }
+th { color: var(--ink3); font-weight: 500; }
+td.num, th.num { text-align: right; }
+.muted { color: var(--ink3); font-size: 13px; }
+footer { color: var(--ink3); font-size: 12.5px; max-width: 90ch; display: grid; gap: 4px; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Night Watch · RGB + thermal + LiDAR · TriSAR-3D held-out test</div>
+    <h1>Who is out there <em>after dark</em>?</h1>
+    <p class="lede">Two perception heads read the same fused camera, thermal and LiDAR frame. A 9-billion-parameter vision-language model writes a report with posture and range. A 12-million-parameter detector runs in under a millisecond. Every frame here comes from sites neither model saw in training. Pick a scene, switch sensors off, and compare what each head reports.</p>
+    <div class="kpis" id="kpis"></div>
+  </header>
+
+  <div class="presets" id="presets"></div>
+
+  <div class="main">
+    <section class="viewer" aria-label="Frame viewer">
+      <div class="bar">
+        <div class="group" id="clips"><span>Scene</span></div>
+      </div>
+      <div class="bar">
+        <div class="group" id="views"><span>Show</span></div>
+        <div class="group" id="conds"><span>Sensors</span></div>
+      </div>
+      <div class="bar">
+        <div class="group" id="layers"><span>Boxes</span></div>
+      </div>
+      <div class="stage"><canvas id="cv" width="640" height="512" aria-label="Sensor frame with detections"></canvas>
+        <div class="stamp" id="stamp"></div><div class="note" id="note" hidden></div></div>
+      <div class="scrub">
+        <button class="seg play" id="play" type="button">Play</button>
+        <input type="range" id="slider" min="0" max="0" value="0" aria-label="Frame">
+        <span class="meta" id="pos"></span>
+      </div>
+    </section>
+
+    <aside aria-label="What each head reported">
+      <div class="card"><h2>This frame</h2><div class="verdict" id="verdict"></div><div class="muted" id="gtline"></div></div>
+      <div class="card"><h2><span class="k" id="vk"></span><span id="vtitle">Vision-language model, raw output</span></h2><pre id="vtxt"></pre></div>
+      <div class="card"><h2><span class="k" style="background:var(--fast)"></span>Fast head detections</h2><div id="ftab"></div></div>
+    </aside>
+  </div>
+
+  <footer>
+    <div>Data: TriSAR-3D (CC-BY-4.0). All camera, thermal and LiDAR frames are rendered into the thermal camera's 640×512 view. "Combined" keeps the camera-dropout VLM's persons and adds fast-head detections that do not overlap them (IoU &lt; 0.3). Fast-head boxes are de-duplicated for display (NMS 0.5); scored results use the raw output. Under a dead sensor, the VLM was evaluated on a fixed 600-frame subset; use the sensor-failure test set to see it.</div>
+    <div>Ground-truth pose labels "walking" and "standing" are scored as "upright".</div>
+  </footer>
+</div>
+
+<script>
+(() => {
+  const COL = { gt: "#f3efe6", vlm_old: "#d9922a", vlm: "#4b95ef", fast: "#23b07e" };
+  const CLIP_ORDER = ["forest", "forest_far", "lab_night", "lab_day", "sensors"];
+  const VIEWS = [["overlay", "Thermal + LiDAR"], ["thermal", "Thermal"], ["camera", "Camera"]];
+  const CONDS = [["normal", "All sensors"], ["rgb_off", "Camera off"], ["thermal_off", "Thermal off"], ["lidar_off", "LiDAR off"]];
+  const LAYERS = [["gt", "Ground truth", "gt"], ["vlm_old", "VLM, no dropout", "vlm_old"], ["vlm", "VLM, camera-dropout", "vlm"], ["fast", "Fast head", "fast"]];
+  const S = { clip: "forest", idx: 0, view: "overlay", cond: "normal", layers: { gt: true, vlm_old: false, vlm: true, fast: true }, playing: null, preset: null };
+  let D = null, byClip = {}; const imgs = {};
+  const $ = (id) => document.getElementById(id);
+  const cv = $("cv"), cx = cv.getContext("2d");
+
+  function seg(label, pressed, onclick, extra) {
+    const b = document.createElement("button"); b.type = "button"; b.className = "seg" + (extra ? " " + extra : "");
+    b.setAttribute("aria-pressed", pressed ? "true" : "false"); b.onclick = onclick; b.innerHTML = label; return b;
+  }
+  function frame() { return byClip[S.clip][S.idx]; }
+  function sprite(k) {
+    if (!imgs[k]) { const im = new Image(); im.src = "f/" + String(k).padStart(3, "0") + ".jpg"; im.onload = () => { if (frame().k === k) draw(); }; imgs[k] = im; }
+    return imgs[k];
+  }
+  function preload() { const a = byClip[S.clip]; for (let j = S.idx; j < Math.min(a.length, S.idx + 6); j++) sprite(a[j].k); }
+
+  function boxes(list, color, dashed, labelFn) {
+    cx.lineWidth = 2.5; cx.strokeStyle = color; cx.setLineDash(dashed ? [6, 4] : []);
+    cx.font = "500 12px 'IBM Plex Mono', monospace";
+    for (const q of list) {
+      const [x0, y0, x1, y1] = q.b; cx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+      const t = labelFn(q); if (!t) continue;
+      const w = cx.measureText(t).width + 8, ty = y0 - 17 < 0 ? y1 + 1 : y0 - 17;
+      cx.setLineDash([]); cx.fillStyle = color; cx.fillRect(x0, ty, w, 16);
+      cx.fillStyle = color === COL.gt ? "#0d1013" : "#fff"; cx.fillText(t, x0 + 4, ty + 12);
+      cx.setLineDash(dashed ? [6, 4] : []);
+    }
+    cx.setLineDash([]);
+  }
+  const lab = (q) => (q.pose || "person") + (q.r != null ? " " + Math.round(q.r) + " m" : "");
+
+  function draw() {
+    const f = frame(), im = sprite(f.k);
+    cx.fillStyle = "#000"; cx.fillRect(0, 0, 640, 512);
+    let panel = { camera: 0, thermal: 1, overlay: 2 }[S.view];
+    const dead = (S.cond === "rgb_off" && S.view === "camera") || (S.cond === "thermal_off" && S.view === "thermal");
+    if (S.cond === "lidar_off" && S.view === "overlay") panel = 1;
+    if (S.cond === "thermal_off" && S.view === "overlay") panel = -1;
+    if (im.complete && im.naturalWidth && !dead) {
+      if (panel >= 0) cx.drawImage(im, 0, panel * 512, 640, 512, 0, 0, 640, 512);
+      else { cx.drawImage(im, 0, 1024, 640, 512, 0, 0, 640, 512); cx.fillStyle = "rgba(0,0,0,.55)"; cx.fillRect(0, 0, 640, 512); }
+    }
+    const p = f.pred[S.cond] || {};
+    if (S.layers.gt) boxes(f.gt, COL.gt, true, () => "");
+    if (S.layers.vlm_old && p.vlm) boxes(p.vlm.p, COL.vlm_old, false, lab);
+    if (S.layers.vlm && p.vlm_cd) boxes(p.vlm_cd.p, COL.vlm, false, lab);
+    if (S.layers.fast && p.fast) {
+      const sp = (S.layers.vlm && p.vlm_cd) ? p.vlm_cd.p : [];
+      boxes(p.fast.filter(q => sp.every(r => iou(q.b, r.b) < 0.3)), COL.fast, false, lab);
+    }
+    $("stamp").textContent = `${f.label} · ${f.loc}${f.dark ? " · camera dark" : ""} · t ${f.t.toFixed(1)} s`;
+    const missing = [];
+    if ((S.layers.vlm || S.layers.vlm_old) && !p.vlm_cd && S.cond !== "normal") missing.push("The VLM was not run under this sensor failure for this frame. Pick the sensor-failure test set.");
+    $("note").hidden = !missing.length; $("note").textContent = missing.join(" ");
+    readout(f, p);
+    $("slider").value = S.idx; $("pos").textContent = `${S.idx + 1} / ${byClip[S.clip].length}`;
+  }
+  function iou(a, b) {
+    const ix = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0])), iy = Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
+    const i = ix * iy; return i / Math.max(1e-6, (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - i);
+  }
+  function hits(pred, gt) { return gt.filter(g => pred.some(q => iou(q.b, g.b) >= 0.5)).length; }
+
+  function readout(f, p) {
+    const g = f.gt.length, parts = [];
+    const useOld = S.layers.vlm_old && !S.layers.vlm, v = useOld ? p.vlm : p.vlm_cd;
+    if (p.router && !useOld) {
+      const vc = p.vlm_cd.p.length, fo = p.router.length - vc, h = hits(p.router, f.gt);
+      if (vc) parts.push(`VLM reports ${vc}` + (fo ? `, fast head adds ${fo}` : ""));
+      else if (fo) parts.push(`VLM: nobody visible. Fast head finds ${fo}`);
+      else parts.push("Neither head reports anyone");
+      parts.push(`. Combined: ${h} of ${g} people found.`);
+    } else if (p.fast) {
+      parts.push(`Fast head: ${hits(p.fast, f.gt)} of ${g} people found.`);
+      if (useOld && p.vlm) parts.push(` VLM without dropout: ${hits(p.vlm.p, f.gt)} of ${g} right, ${p.vlm.p.length - hits(p.vlm.p, f.gt)} extra.`);
+    }
+    $("verdict").textContent = parts.join("");
+    const far = f.gt.filter(q => q.r > 60).length;
+    $("gtline").textContent = `Ground truth: ${g} ${g === 1 ? "person" : "people"}` + (g ? ` at ${f.gt.map(q => Math.round(q.r)).sort((a, b) => a - b).join(", ")} m` : "") + (far ? ` (${far} beyond LiDAR range)` : "");
+    $("vk").style.background = useOld ? COL.vlm_old : COL.vlm;
+    $("vtitle").textContent = useOld ? "VLM without camera-dropout, raw output" : "VLM with camera-dropout, raw output";
+    $("vtxt").textContent = v ? (v.txt || "(empty)") : "Not evaluated for this frame under this condition.";
+    const fl = p.fast || [];
+    $("ftab").innerHTML = fl.length
+      ? `<table><thead><tr><th>pose</th><th class="num">range</th><th class="num">score</th><th class="num">match</th></tr></thead><tbody>` +
+        fl.map(q => `<tr><td>${q.pose || "-"}</td><td class="num">${q.r != null ? q.r.toFixed(1) + " m" : "-"}</td><td class="num">${q.s.toFixed(2)}</td><td class="num">${f.gt.some(g2 => iou(q.b, g2.b) >= 0.5) ? "yes" : "no"}</td></tr>`).join("") + `</tbody></table>`
+      : `<div class="muted">No detections above the validation-tuned threshold (${D.fast_thr.toFixed(2)}).</div>`;
+  }
+
+  function buildControls() {
+    const clips = $("clips"); clips.querySelectorAll("button").forEach(b => b.remove());
+    for (const c of CLIP_ORDER) if (byClip[c]) clips.append(seg(byClip[c][0].label, S.clip === c, () => { S.clip = c; S.idx = 0; S.preset = null; stop(); sync(); }));
+    const views = $("views"); views.querySelectorAll("button").forEach(b => b.remove());
+    for (const [v, l] of VIEWS) views.append(seg(l, S.view === v, () => { S.view = v; sync(); }));
+    const conds = $("conds"); conds.querySelectorAll("button").forEach(b => b.remove());
+    for (const [c, l] of CONDS) conds.append(seg(l, S.cond === c, () => { S.cond = c; sync(); }));
+    const layers = $("layers"); layers.querySelectorAll("button").forEach(b => b.remove());
+    for (const [k, l, c] of LAYERS) layers.append(seg(`<span class="k" style="color:${COL[c]}"></span>${l}`, S.layers[k], () => { S.layers[k] = !S.layers[k]; sync(); }, "tog"));
+    $("presets").querySelectorAll(".preset").forEach(b => b.setAttribute("aria-pressed", b.dataset.p === S.preset ? "true" : "false"));
+    $("slider").max = byClip[S.clip].length - 1;
+  }
+  function sync() { buildControls(); preload(); draw(); }
+  function stop() { if (S.playing) { clearInterval(S.playing); S.playing = null; $("play").textContent = "Play"; } }
+  $("play").onclick = () => {
+    if (S.playing) return stop();
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    S.playing = setInterval(() => { S.idx = (S.idx + 1) % byClip[S.clip].length; preload(); draw(); }, reduce ? 900 : 280);
+    $("play").textContent = "Pause";
+  };
+  $("slider").oninput = (e) => { S.idx = +e.target.value; stop(); preload(); draw(); };
+  document.addEventListener("keydown", (e) => {
+    if (e.target.tagName === "INPUT") return;
+    if (e.key === "ArrowRight") { S.idx = Math.min(byClip[S.clip].length - 1, S.idx + 1); preload(); draw(); }
+    if (e.key === "ArrowLeft") { S.idx = Math.max(0, S.idx - 1); draw(); }
+  });
+
+  function presets() {
+    const find = (clip, fn) => { const a = byClip[clip] || []; const j = a.findIndex(fn); return j < 0 ? 0 : j; };
+    const P = [
+      { id: "halluc", h: "The fine-tuned VLM invents people in the dark", d: "Trained without camera-dropout, it reports confident people where nobody is.",
+        go: () => Object.assign(S, { clip: "forest_far", view: "overlay", cond: "normal", layers: { gt: true, vlm_old: true, vlm: false, fast: false },
+          idx: find("forest_far", f => (f.pred.normal?.vlm?.p.length || 0) > 0 && hits(f.pred.normal.vlm.p, f.gt) === 0) }) },
+      { id: "abstain", h: "Camera-dropout VLM says nobody; the LiDAR head finds them", d: "The combined output keeps both: F1 0.43 vs 0.37 for the best single head.",
+        go: () => Object.assign(S, { clip: "forest", view: "overlay", cond: "normal", layers: { gt: true, vlm_old: false, vlm: true, fast: true },
+          idx: find("forest", f => f.pred.normal?.vlm_cd && !f.pred.normal.vlm_cd.p.length && hits(f.pred.normal.fast || [], f.gt) >= 2) }) },
+      { id: "collapse", h: "Camera off: the VLM repeats one memorised box", d: "Thermal and LiDAR enter as a side branch. Without the camera, it emits the same output on every frame.",
+        go: () => Object.assign(S, { clip: "sensors", view: "camera", cond: "rgb_off", layers: { gt: true, vlm_old: false, vlm: true, fast: false },
+          idx: find("sensors", f => f.pred.rgb_off?.vlm_cd) }) },
+      { id: "familiar", h: "On a familiar site, the VLM adds posture and range", d: "Held-out lab: VLM F1 0.76 vs 0.56 for the fast head, with sitting and lying people.",
+        go: () => Object.assign(S, { clip: "lab_night", view: "thermal", cond: "normal", layers: { gt: true, vlm_old: false, vlm: true, fast: false },
+          idx: find("lab_night", f => (f.pred.normal?.vlm_cd?.p || []).some(q => q.pose === "sitting" || q.pose === "lying")) }) },
+    ];
+    const host = $("presets");
+    P.forEach((p, i) => {
+      const b = document.createElement("button"); b.type = "button"; b.className = "preset"; b.dataset.p = p.id;
+      b.innerHTML = `<span class="n">${String(i + 1).padStart(2, "0")}</span><span class="h">${p.h}</span><span class="d">${p.d}</span>`;
+      b.onclick = () => { stop(); p.go(); S.preset = p.id; sync(); }; host.append(b);
+    });
+    return P;
+  }
+
+  function kpis() {
+    const s = D.summary, row = [["fast", "Fast head", COL.fast], ["slow__t_sft_fusion_l_cd50", "VLM, camera-dropout", COL.vlm],
+      ["union__t_sft_fusion_l_cd50", "Combined", "#e7eaed"]];
+    $("kpis").innerHTML = `<span>Person F1 on unseen sites (2,751 frames):</span>` + row.map(([k, l, c]) =>
+      `<span><span class="sw" style="background:${c}"></span>${l} <b>${s[k].all.toFixed(2)}</b> · forest <b>${s[k].loc_forest.toFixed(2)}</b></span>`).join("");
+  }
+
+  fetch("data.json").then(r => r.json()).then(d => {
+    D = d; for (const f of d.frames) (byClip[f.clip] = byClip[f.clip] || []).push(f);
+    kpis(); const P = presets(); P[1].go(); S.preset = P[1].id; sync();
+  }).catch(() => { $("verdict").textContent = "The frame data did not load. Reload the page to try again."; });
+})();
+</script>
