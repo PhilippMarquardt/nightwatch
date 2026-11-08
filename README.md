@@ -1,4 +1,59 @@
-# Night Watch — RGB + thermal fusion for a VLM slow head, distilled into a real-time fast head
+# Night Watch: camera + thermal + LiDAR perception for security robots after dark
+
+Two heads read one fused sensor frame. A **9B vision-language model** (Qwen3.5-9B + LoRA) writes an incident
+report with posture and metric range. A **12M-parameter detector** runs in 0.7 ms on TensorRT. Every number below comes
+from **sites neither model saw in training**, including a forest at night where the camera is black.
+
+![Unseen forest at night: camera, thermal + LiDAR with ground truth, system output](docs/media/demo_forest_best.gif)
+
+*Unseen forest, night (TriSAR-3D test). Left: the camera is almost black. Middle: thermal plus LiDAR coloured by range, with
+ground truth in white. Right: the VLM says "nobody visible" and the LiDAR-driven fast head finds both people with
+posture and range. This window was chosen as the forest's best; the forest's overall F1 is 0.31.*
+
+![System diagram](docs/architecture.png)
+
+## Results at a glance (TriSAR-3D held-out test, 2,751 frames, person F1 @ IoU 0.5)
+
+| system | all | night | unseen forest | held-out lab |
+|---|---|---|---|---|
+| VLM zero-shot, RGB | 0.07 | – | – | – |
+| VLM fine-tuned, RGB + thermal + LiDAR | 0.17 | 0.11 | 0.00 | **0.79** |
+| … + camera-dropout 0.5 | 0.24 | 0.16 | 0.00 | 0.76 |
+| fast head, 12M (seed 0 / seed 1) | 0.37 / 0.40 | 0.34 / 0.38 | **0.31 / 0.36** | 0.56 / 0.55 |
+| **combined: VLM (camera-dropout) + non-overlapping fast detections** | **0.43 / 0.46** | **0.39 / 0.42** | 0.31 / 0.35 | 0.76 |
+
+What the runs show:
+
+1. **Combining the heads wins, but only with a VLM that abstains.** The combined output gains +0.066 and +0.065 F1 over
+   the fast head alone, for two fast-head seeds. The same combination with the VLM trained without camera-dropout
+   *loses* to the fast head (0.32 vs 0.37), because that VLM invents people in the dark.
+2. **Camera-dropout turned hallucination into abstention.** On 2,119 forest frames the earlier VLM reported 3,373 people,
+   nearly all wrong. The camera-dropout VLM answers "nobody" on 2,099 of them. Precision went 0.20 → 0.75.
+3. **The VLM's evidence still comes through the camera.** With the camera off, the camera-dropout VLM emits the same
+   memorised box on all 600 test frames. Thermal level-matching does not change its forest F1 (0.00). Thermal and LiDAR
+   added as a side branch onto the visual tokens modulate the camera path but cannot replace it.
+4. **The fast head runs on LiDAR.** LiDAR off: 0.37 → 0.22. Camera off: no change. Thermal off: slightly better
+   off-domain, because raw thermal shifts between sites.
+5. **Escalating the VLM only on uncertain frames did not beat random escalation.** Fast-head doubt sits in the forest,
+   where the VLM abstains. This is logged as a negative result.
+
+![Combined vs single heads](docs/media/fig_trisar_router.png)
+![Accuracy vs compute](docs/media/fig_trisar_pareto.png)
+
+LLVIP (RGB + thermal street cameras, 7 held-out sites) covers distillation: the fused VLM labels 8,164 frames from 11
+unlabeled sites, the fast head learns from them, and self-training and compute-matched controls check the result. Those
+results land with the overnight run; see `docs/LAB_NOTES.md`. Site memory (a JEPA-style latent predictor on LTDv2, one
+harbour camera over 8 months) detects inserted persons at AUROC 0.70 (pixel baseline 0.52) and crowds at 0.85 (token
+baseline 0.67).
+
+Engineering notes:
+- Every comparison is same-subset, and regression gates fail closed.
+- Four leak and overwrite bugs were caught before they reached results; see `docs/LAB_NOTES.md` §2.
+- Independent reviews (Fable, Astra) and their triage are in `docs/reviews/`.
+
+---
+
+## Design (stage 1, LLVIP)
 
 A small-scale, end-to-end version of a multi-sensor perception stack for security robots:
 
