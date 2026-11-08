@@ -117,8 +117,11 @@ def main():
             fusion.set_thermal(th.repeat_interleave(a.group, 0)[sl])
             ppatch = pv.view(out.shape[0], n_patch, -1)[sl].reshape(-1, pv.shape[-1])
             with torch.autocast("cuda", dtype=torch.bfloat16):
+                extra = {}
+                if "mm_token_type_ids" in enc:
+                    extra["mm_token_type_ids"] = (out[sl] == model.config.image_token_id).long()
                 logits = model(input_ids=out[sl], attention_mask=full_att[sl], pixel_values=ppatch,
-                               image_grid_thw=grid[sl]).logits[:, P - 1:-1].float()
+                               image_grid_thw=grid[sl], **extra).logits[:, P - 1:-1].float()
             lp = torch.log_softmax(logits, -1).gather(-1, comp[sl, :, None]).squeeze(-1)
             loss = -(adv[sl, None] * lp * cmask[sl]).sum() / total_tok
             loss.backward()

@@ -154,7 +154,10 @@ class TriSARSFT(Dataset):
         ans = self.proc.tokenizer(answer, add_special_tokens=False)["input_ids"] + self.end_ids
         ids = torch.cat([enc["input_ids"][0], torch.tensor(ans)])
         labels = torch.cat([torch.full_like(enc["input_ids"][0], -100), torch.tensor(ans)])
-        return {"input_ids": ids, "labels": labels, "pixel_values": enc["pixel_values"],
+        out = {}
+        if "mm_token_type_ids" in enc:      # transformers>=5.2x: M-RoPE needs per-token modality ids
+            out["mm_token_type_ids"] = torch.cat([enc["mm_token_type_ids"][0], torch.zeros(len(ans), dtype=enc["mm_token_type_ids"].dtype)])
+        return {**out, "input_ids": ids, "labels": labels, "pixel_values": enc["pixel_values"],
                 "image_grid_thw": enc["image_grid_thw"], "thermal": thermal_tensor(th), "lidar": lidar_tensor(li),
                 "task": task}
 

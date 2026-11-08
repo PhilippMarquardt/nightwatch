@@ -77,7 +77,10 @@ class SFTDataset(Dataset):
         ans = self.proc.tokenizer(answer, add_special_tokens=False)["input_ids"] + self.end_ids
         ids = torch.cat([enc["input_ids"][0], torch.tensor(ans)])
         labels = torch.cat([torch.full_like(enc["input_ids"][0], -100), torch.tensor(ans)])
-        return {"input_ids": ids, "labels": labels, "pixel_values": enc["pixel_values"],
+        out = {}
+        if "mm_token_type_ids" in enc:      # transformers>=5.2x: M-RoPE needs per-token modality ids
+            out["mm_token_type_ids"] = torch.cat([enc["mm_token_type_ids"][0], torch.zeros(len(ans), dtype=enc["mm_token_type_ids"].dtype)])
+        return {**out, "input_ids": ids, "labels": labels, "pixel_values": enc["pixel_values"],
                 "image_grid_thw": enc["image_grid_thw"], "thermal": thermal_tensor(ir), "task": task}
 
 
@@ -86,14 +89,18 @@ def sft_collate(batch, pad_id):
     ids = torch.full((len(batch), L), pad_id, dtype=torch.long)
     lab = torch.full((len(batch), L), -100, dtype=torch.long)
     att = torch.zeros((len(batch), L), dtype=torch.long)
+    mm = torch.zeros((len(batch), L), dtype=torch.long) if "mm_token_type_ids" in batch[0] else None
     for i, b in enumerate(batch):                       # right padding for training
         n = len(b["input_ids"])
         ids[i, :n], lab[i, :n], att[i, :n] = b["input_ids"], b["labels"], 1
+        if mm is not None:
+            mm[i, :n] = b["mm_token_type_ids"]
     return {"input_ids": ids, "labels": lab, "attention_mask": att,
             "pixel_values": torch.cat([b["pixel_values"] for b in batch]),
             "image_grid_thw": torch.cat([b["image_grid_thw"] for b in batch]),
             "thermal": torch.stack([b["thermal"] for b in batch]),
-            **({"lidar": torch.stack([b["lidar"] for b in batch])} if "lidar" in batch[0] else {})}
+            **({"lidar": torch.stack([b["lidar"] for b in batch])} if "lidar" in batch[0] else {}),
+            **({"mm_token_type_ids": mm} if mm is not None else {})}
 
 
 class InferDataset(Dataset):
