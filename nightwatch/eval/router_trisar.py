@@ -12,8 +12,10 @@ python -m nightwatch.eval.router_trisar
 """
 from __future__ import annotations
 
+import argparse
 import json
 import os
+import random
 
 from nightwatch.eval.metrics_trisar import score_file
 
@@ -48,9 +50,43 @@ def route(fast, slow, thr, kind):
     return out
 
 
+def uncertainty(fast_rec):
+    """Frame-level doubt of the fast head: mass of mid-confidence detections (score 0.1-0.9)."""
+    return sum(1 - abs(2 * q["score"] - 1) for q in fast_rec.get("persons", []) if 0.1 <= q["score"] <= 0.9)
+
+
+def escalation_curve(fast, slow, thr, fused, tag):
+    """Fast head on every frame; the slow head is consulted (union) only on the k% most uncertain frames."""
+    ids = sorted(slow)
+    by_u = sorted(ids, key=lambda i: -uncertainty(fast.get(i, {})))
+    # post-hoc (chosen after seeing the uncertainty result on test): frames where the fast head is confident someone is there
+    by_mass = sorted(ids, key=lambda i: -sum(q["score"] for q in fast.get(i, {}).get("persons", []) if q["score"] >= thr))
+    rnd = ids[:]; random.Random(0).shuffle(rnd)
+    base, both = route(fast, slow, thr, "fast"), route(fast, slow, thr, "union")
+    curve = {"uncertainty": [], "posthoc_detection_mass": [], "random": []}
+    for order_name, order in [("uncertainty", by_u), ("posthoc_detection_mass", by_mass), ("random", rnd)]:
+        for k in [0, 5, 10, 20, 30, 50, 75, 100]:
+            esc = set(order[: round(len(order) * k / 100)])
+            path = f"{OUT}/_tmp_{tag}.jsonl"
+            with open(path, "w") as fh:
+                for i in ids:
+                    fh.write(json.dumps(both[i] if i in esc else base[i]) + "\n")
+            m = score_file(path, fused)["report/normal"]
+            curve[order_name].append({"k": k, **{sl: m[sl]["f1"] for sl in ["all", "night", "loc_forest", "loc_lab"] if sl in m}})
+            os.remove(path)
+    return curve
+
+
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--fast", default="tf_rgbtl")
+    ap.add_argument("--tag", default="")
+    a = ap.parse_args()
+    global OUT
+    OUT = f"{RUNS}/t_router{a.tag}"
     os.makedirs(OUT, exist_ok=True)
-    fast_run = "tf_rgbtl"
+    fast_run = a.fast
+    fused = os.environ.get("NW_TRISAR_FUSED", "data/trisar_fused")
     thr = json.load(open(f"{RUNS}/{fast_run}/train_summary.json"))["score_thr"]
     fast = load(f"{RUNS}/{fast_run}/pred_test.jsonl")
     res = {}
@@ -67,12 +103,18 @@ def main():
             with open(path, "w") as fh:
                 for d in route(fast, slow, thr, kind).values():
                     fh.write(json.dumps(d) + "\n")
-            m = score_file(path, os.environ.get("NW_TRISAR_FUSED", "data/trisar_fused"))["report/normal"]
+            m = score_file(path, fused)["report/normal"]
             res[name] = m
             row = {sl: round(m[sl]["f1"], 3) for sl in ["all", "night", "loc_forest", "loc_lab"] if sl in m}
             print(f"{name:40s} F1 {row}  P {m['all']['precision']:.3f} R {m['all']['recall']:.3f} "
                   f"pose {m['all'].get('pose_acc', float('nan')):.3f} dist {m['all'].get('dist_mae_m', float('nan')):.2f}")
     json.dump(res, open(f"{OUT}/results.json", "w"), indent=1)
+    p = f"{RUNS}/t_sft_fusion_l_cd50/pred_test.jsonl"
+    if os.path.exists(p):
+        curve = escalation_curve(fast, load(p), thr, fused, "cd50")
+        json.dump(curve, open(f"{OUT}/escalation_cd50.json", "w"), indent=1)
+        for o, c in curve.items():
+            print(o, [(r["k"], round(r["all"], 3)) for r in c])
 
 
 if __name__ == "__main__":
