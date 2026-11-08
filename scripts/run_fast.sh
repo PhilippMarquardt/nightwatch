@@ -17,7 +17,7 @@ run() {  # name, extra args...
   python -m nightwatch.eval.metrics --pred runs/$name/pred_test.jsonl --score-thr $thr --out runs/$name/pred_test_metrics.json
 }
 
-for v in $VARIANTS; do
+for v in ${VARIANTS//,/ }; do   # space- or comma-separated
   case $v in
     gt_labeled)  run fast_gt_labeled --splits labeled ;;                       # what the labels alone buy
     oracle)      run fast_oracle     --splits labeled,unlabeled ;;             # upper bound: every site hand-labeled
