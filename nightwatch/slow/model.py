@@ -86,7 +86,7 @@ class ThermalFusion(nn.Module):
         add = self.main(feats).to(po.dtype)
         self._ratio = {"main": float(add.float().norm(dim=-1).mean() / po.float().norm(dim=-1).mean().clamp(min=1e-6))}
         output.pooler_output = po + add
-        if output.deepstack_features is not None:
+        if getattr(output, "deepstack_features", None):
             new = []
             for i, (d, p) in enumerate(zip(output.deepstack_features, self.deep)):
                 a = p(feats).to(d.dtype)
@@ -114,6 +114,8 @@ def load_slow_head(model_path: str, mode: str, lora: dict | None = None, adapter
     from transformers import AutoModelForImageTextToText, AutoProcessor
 
     proc = AutoProcessor.from_pretrained(model_path)
+    if proc.tokenizer.pad_token_id is None:          # Qwen3.5 ships without a pad token
+        proc.tokenizer.pad_token = proc.tokenizer.eos_token
     model = AutoModelForImageTextToText.from_pretrained(model_path, dtype=torch.bfloat16, attn_implementation=attn)
     model.to(device)
     model.requires_grad_(False)
@@ -134,6 +136,6 @@ def load_slow_head(model_path: str, mode: str, lora: dict | None = None, adapter
     elif lora:
         from peft import LoraConfig, get_peft_model
         cfg = LoraConfig(r=lora["r"], lora_alpha=lora.get("alpha", 2 * lora["r"]), lora_dropout=lora.get("dropout", 0.05),
-                         target_modules=r".*language_model.*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)")
+                         target_modules=r".*language_model.*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj|in_proj_qkv|in_proj_z|out_proj)")
         model = get_peft_model(model, cfg)
     return model, proc, fusion

@@ -6,8 +6,9 @@ scp C:/Users/pmarq/source/repos/nightwatch_code.tgz user@gpu:~/
 # 2. on the GPU box
 mkdir -p ~/nightwatch && cd ~/nightwatch && tar xzf ~/nightwatch_code.tgz
 tmux new -s nw
-bash scripts/setup.sh 2>&1 | tee logs_setup.txt          # ~10 min (LLVIP 4 GB + Qwen3-VL-8B 17 GB)
+bash scripts/setup.sh 2>&1 | tee logs_setup.txt          # ~10 min (LLVIP 4 GB + Qwen3.5-9B 19 GB)
 WORKERS=16 bash scripts/run_all.sh                       # resumable; Ctrl-b d to detach
+# bigger slow head on an H200 (slower, ~3x SFT time): NW_MODEL=Qwen/Qwen3.6-27B
 # optional, if time is left afterwards:
 STAGES="grpo" bash scripts/run_slow.sh && python -m nightwatch.report.make_report
 ```

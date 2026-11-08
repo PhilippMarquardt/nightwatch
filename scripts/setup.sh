@@ -9,6 +9,9 @@ nvidia-smi --query-gpu=name,memory.total --format=csv
 python -c "import torch; print('torch', torch.__version__, 'cuda', torch.version.cuda)"
 pip install -q -r requirements.txt
 pip install -q hf_transfer || true
+# Qwen3.5 uses Gated DeltaNet linear attention: fast kernels (Triton) + causal-conv1d, else slow torch fallback
+pip install -q flash-linear-attention || echo "fla not installed - slow fallback"
+pip install -q causal-conv1d --no-build-isolation || echo "causal-conv1d not installed - torch fallback"
 # TensorRT is optional (fast-head export); the pipeline falls back to ONNX Runtime + torch timings.
 pip install -q tensorrt-cu12 || pip install -q tensorrt || echo "tensorrt not installed - will fall back"
 
@@ -25,7 +28,7 @@ fi
 python - <<'EOF'
 from huggingface_hub import snapshot_download
 import timm, os
-m = os.environ.get("NW_MODEL", "Qwen/Qwen3-VL-8B-Instruct")
+m = os.environ.get("NW_MODEL", "Qwen/Qwen3.5-9B")
 print(snapshot_download(m))
 timm.create_model("convnext_tiny.dinov3_lvd1689m", pretrained=True)
 timm.create_model("resnet18.a1_in1k", pretrained=True)

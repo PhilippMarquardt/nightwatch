@@ -23,6 +23,7 @@ from nightwatch.data.llvip import load_index
 
 OUT = os.environ.get("NW_REPORT", "report")
 RUNS = os.environ.get("NW_RUNS", "runs")
+VLM = os.environ.get("NW_MODEL", "Qwen/Qwen3.5-9B").split("/")[-1]
 # dark surface + validated dark categorical steps (fixed per entity, never by rank)
 SURF, INK, INK2, GRID = "#1a1a19", "#f0efec", "#c3c2b7", "#3a3936"
 GRAY = "#8a8983"
@@ -33,7 +34,7 @@ COL = {
     "fast_oracle_rgb": "#199e70", "fast_oracle_t": "#e66767",
 }
 NAME = {
-    "zs_rgb": "Qwen3-VL-8B zero-shot (RGB)", "zs_dual": "Qwen3-VL-8B zero-shot (RGB + T image)",
+    "zs_rgb": f"{VLM} zero-shot (RGB)", "zs_dual": f"{VLM} zero-shot (RGB + T image)",
     "sft_rgb": "LoRA, RGB only", "sft_dual": "LoRA, thermal as 2nd image", "sft_fusion": "LoRA + native thermal fusion (ours)", "grpo_fusion": "fusion + GRPO (F1 reward)",
     "fast_gt_labeled": "Fast head, 7 labeled sites", "fast_distill": "Fast head, distilled from slow head",
     "fast_oracle": "Fast head, all sites hand-labeled", "fast_oracle_rgb": "Fast head, RGB only (oracle labels)",

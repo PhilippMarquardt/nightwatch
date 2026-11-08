@@ -43,7 +43,7 @@ def images_for(mode, rgb, ir):
 
 
 class SFTDataset(Dataset):
-    def __init__(self, recs: list[Record], root: str, proc, mode: str, crop_p=0.35, drop_rgb=0.15, drop_t=0.10,
+    def __init__(self, recs: list[Record], root: str, proc, mode: str, crop_p=0.35, drop_rgb=0.25, drop_t=0.10,
                  seed=0, labels: dict | None = None):
         self.recs, self.root, self.proc, self.mode = recs, root, proc, mode
         self.crop_p, self.drop_rgb, self.drop_t = crop_p, drop_rgb, drop_t

@@ -56,7 +56,7 @@ def run(model, proc, fusion, recs, root, mode, task, cond, bs, workers, out_fh, 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="Qwen/Qwen3-VL-8B-Instruct")
+    ap.add_argument("--model", default="Qwen/Qwen3.5-9B")
     ap.add_argument("--mode", choices=["rgb", "dual", "fusion"], required=True)
     ap.add_argument("--adapter", default=None)
     ap.add_argument("--root", default="data/raw/LLVIP")

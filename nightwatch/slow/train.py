@@ -26,7 +26,7 @@ from nightwatch.utils import RunLogger, seed_all
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="Qwen/Qwen3-VL-8B-Instruct")
+    ap.add_argument("--model", default="Qwen/Qwen3.5-9B")
     ap.add_argument("--mode", choices=["rgb", "dual", "fusion"], required=True)
     ap.add_argument("--root", default="data/raw/LLVIP")
     ap.add_argument("--index", default="data/index.json")

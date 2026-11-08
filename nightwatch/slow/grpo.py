@@ -27,7 +27,7 @@ from nightwatch.utils import RunLogger, seed_all
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="Qwen/Qwen3-VL-8B-Instruct")
+    ap.add_argument("--model", default="Qwen/Qwen3.5-9B")
     ap.add_argument("--init", required=True, help="SFT run dir (LoRA adapter + fusion.pt)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--root", default="data/raw/LLVIP")
@@ -82,7 +82,7 @@ def main():
         model.eval()
         fusion.set_thermal(th.repeat_interleave(a.group, 0))
         with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
-            out = model.generate(**enc, do_sample=True, temperature=a.temp, top_p=1.0, max_new_tokens=a.max_new,
+            out = model.generate(**enc, do_sample=True, temperature=a.temp, top_p=1.0, max_new_tokens=a.max_new, use_cache=True,
                                  num_return_sequences=a.group)
         P = enc["input_ids"].shape[1]
         comp = out[:, P:]
