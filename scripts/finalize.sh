@@ -27,6 +27,7 @@ for r in tf_rgbtl tf_tl tf_rgb tf_rgbt; do
 done
 
 python -m nightwatch.eval.escalation || true
+python -m nightwatch.eval.router_trisar || true
 [ -f nightwatch/eval/escalation_trisar.py ] && python -m nightwatch.eval.escalation_trisar || true
 g() { [ -s runs/$1 ] && [ -s runs/$2 ] && python -m nightwatch.eval.gate --candidate runs/$1 --baseline runs/$2 --out runs/$3 > /dev/null; true; }
 g sft_fusion/pred_test_metrics.json         sft_rgb/pred_test_metrics.json           gate_fusion_vs_rgb.json
