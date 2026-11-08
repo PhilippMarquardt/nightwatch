@@ -64,17 +64,19 @@ fi
 
 # ---------------------------------------------------------------- 4. slow head labels ALL unlabeled sites
 if [[ " $STAGES " == *" pseudo "* ]]; then
-  OUT=runs/sft_fusion
-  has $OUT/pred_unlabeled.jsonl || $INF --mode fusion --adapter $OUT --split unlabeled --tasks detect --conds normal \
+  TEACHER=${TEACHER:-fusion}          # fusion (ours) or rgb: does a better teacher make a better student?
+  OUT=runs/sft_$TEACHER
+  SUFFIX=$( [ "$TEACHER" = fusion ] && echo "" || echo "_$TEACHER" )
+  has $OUT/pred_unlabeled.jsonl || $INF --mode $TEACHER --adapter $OUT --split unlabeled --tasks detect --conds normal \
       --limit $PSEUDO_LIMIT --out $OUT/pred_unlabeled.jsonl
-  python - <<'EOF'
-import json
+  python - "$OUT/pred_unlabeled.jsonl" "runs/pseudo_labels_unlabeled$SUFFIX.json" <<'EOF'
+import json, sys
 lab = {}
-for l in open("runs/sft_fusion/pred_unlabeled.jsonl"):
+for l in open(sys.argv[1]):
     d = json.loads(l)
     lab[d["id"]] = d["boxes"]
-json.dump(lab, open("runs/pseudo_labels_unlabeled.json", "w"))
-print("pseudo labels:", len(lab), "images,", sum(len(v) for v in lab.values()), "boxes")
+json.dump(lab, open(sys.argv[2], "w"))
+print("pseudo labels:", len(lab), "images,", sum(len(v) for v in lab.values()), "boxes ->", sys.argv[2])
 EOF
 fi
 
@@ -94,8 +96,10 @@ for f in runs/zs_*/pred_*.jsonl runs/sft_*/pred_*.jsonl runs/grpo_*/pred_*.jsonl
   python -m nightwatch.eval.metrics --pred $f --split $( [[ $f == *pred_val* ]] && echo val || echo test ) \
       --out ${f%.jsonl}_metrics.json > /dev/null 2>&1 || echo "metrics failed: $f"
 done
-if [ -s runs/sft_fusion/pred_unlabeled.jsonl ]; then
-  python -m nightwatch.eval.metrics --pred runs/sft_fusion/pred_unlabeled.jsonl --split unlabeled \
-      --out runs/sft_fusion/pred_unlabeled_metrics.json > /dev/null || true
-fi
+for t in fusion rgb; do
+  if [ -s runs/sft_$t/pred_unlabeled.jsonl ]; then   # teacher quality, scored against the withheld GT
+    python -m nightwatch.eval.metrics --pred runs/sft_$t/pred_unlabeled.jsonl --split unlabeled \
+        --out runs/sft_$t/pred_unlabeled_metrics.json > /dev/null || true
+  fi
+done
 echo "SLOW DONE"

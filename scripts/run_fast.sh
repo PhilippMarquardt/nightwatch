@@ -23,7 +23,8 @@ for v in ${VARIANTS//,/ }; do   # space- or comma-separated
     oracle)      run fast_oracle     --splits labeled,unlabeled ;;             # upper bound: every site hand-labeled
     oracle_rgb)  run fast_oracle_rgb --splits labeled,unlabeled --modal rgb ;; # sensor ablation
     oracle_t)    run fast_oracle_t   --splits labeled,unlabeled --modal t ;;
-    distill)     run fast_distill    --splits labeled,unlabeled --labels runs/pseudo_labels_unlabeled.json ;;  # slow head labels the rest
+    distill)     run fast_distill    --splits labeled,unlabeled --labels runs/pseudo_labels_unlabeled.json ;;  # fused slow head labels the rest
+    distill_rgb) run fast_distill_rgbteacher --splits labeled,unlabeled --labels runs/pseudo_labels_unlabeled_rgb.json ;;  # RGB-only teacher
   esac
 done
 echo "FAST DONE"

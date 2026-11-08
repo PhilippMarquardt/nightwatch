@@ -24,6 +24,8 @@ def load_pair(rec: Record, root: str, crop=None):
 def build_messages(mode: str, prompt: str):
     if mode == "rgb":
         content = [{"type": "text", "text": T.SENSOR_PREAMBLE["rgb"]}, {"type": "image"}, {"type": "text", "text": prompt}]
+    elif mode == "thermal":   # single-sensor control: the thermal image through the VLM's own ViT
+        content = [{"type": "text", "text": "Sensors: thermal camera."}, {"type": "image"}, {"type": "text", "text": prompt}]
     elif mode == "dual":
         content = [{"type": "text", "text": T.SENSOR_PREAMBLE["rgbt"] + "\nVisible camera:"}, {"type": "image"},
                    {"type": "text", "text": "Thermal camera:"}, {"type": "image"}, {"type": "text", "text": prompt}]
@@ -39,6 +41,8 @@ def build_messages(mode: str, prompt: str):
 def images_for(mode, rgb, ir):
     if mode == "dual":
         return [rgb, ir.convert("RGB")]
+    if mode == "thermal":
+        return [ir.convert("RGB")]
     return [rgb]
 
 
@@ -63,7 +67,7 @@ class SFTDataset(Dataset):
         if rng.random() < self.crop_p:
             crop, boxes, (w, h) = T.random_crop(boxes, W, H, rng)
         rgb, ir = load_pair(rec, self.root, crop)
-        if self.mode != "rgb":
+        if self.mode not in ("rgb", "thermal"):      # single-sensor models get no sensor dropout
             r = rng.random()
             if r < self.drop_rgb:
                 rgb = Image.new("RGB", rgb.size)           # camera blinded / pitch black
