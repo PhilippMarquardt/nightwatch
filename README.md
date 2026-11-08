@@ -5,8 +5,9 @@ A small-scale, end-to-end version of a multi-sensor perception stack for securit
 1. **Native sensor encoders**: the VLM's own ViT for the visible camera, plus a DINOv3 ConvNeXt with a
    1-channel stem for raw thermal.
 2. **Fusion**: thermal features land exactly on the VLM's 2×2-merged visual token grid (stride 32 ↔ 32 px
-   tokens), and are added onto the RGB tokens and onto every DeepStack level through zero-initialised
-   gates. The result is one spatially aligned token stream with the same token budget as RGB alone, and
+   tokens), and are added onto the RGB tokens (and onto DeepStack levels where the VLM has them) through
+   zero-initialised output projections (ControlNet-style; a zero *gate* was tested and starves the
+   projection of gradient, so the model never used thermal). The result is one spatially aligned token stream with the same token budget as RGB alone, and
    at step 0 the model is exactly the pretrained VLM.
 3. **Slow head**: Qwen3.5-9B (natively multimodal, Feb 2026; any Qwen3.5/3.6 or Qwen3-VL works via `NW_MODEL`), LoRA-tuned to reason over the fused stream (grounding, counting, zone
    checks). It is trained on 7 labeled sites only.
