@@ -26,7 +26,7 @@ case "${1:-status}" in
       echo '== finished:'; ls runs/*/train_summary.json runs/*/*_metrics.json 2>/dev/null | tr '\n' ' '; echo" ;;
   pull)
     mkdir -p runs report
-    "${SSH[@]}" "cd $REMOTE && tar czf - --exclude='*.safetensors' --exclude='*.pt' --exclude='*.engine' --exclude='*.onnx' runs report 2>/dev/null" | tar xzf - && echo pulled ;;
+    "${SSH[@]}" "cd $REMOTE && mkdir -p report && tar czf - --exclude='*.safetensors' --exclude='*.pt' --exclude='*.engine' --exclude='*.onnx' runs report 2>/dev/null" | tar xzf - && echo pulled ;;
   *)
     echo "unknown command $1"; exit 2 ;;
 esac
