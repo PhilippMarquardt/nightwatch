@@ -1,0 +1,12 @@
+data/raw/
+data/cache*/
+data/*.log
+data/index_smoke.json
+models/
+runs/
+logs/
+wandb/
+__pycache__/
+*.engine
+*.onnx
+*.tgz

@@ -1,0 +1,13 @@
+# torch>=2.6 with CUDA is expected to be preinstalled on the GPU box
+transformers==5.2.0
+peft==0.19.1
+accelerate>=1.10
+timm==1.0.26
+huggingface_hub>=1.0
+pillow
+numpy
+matplotlib
+pyyaml
+onnx
+onnxruntime-gpu
+wandb
