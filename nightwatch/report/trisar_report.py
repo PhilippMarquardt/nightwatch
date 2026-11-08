@@ -125,6 +125,49 @@ def fig_router():
     return save(fig, "fig_trisar_router")
 
 
+def _ms_per_frame(run):
+    """Slow heads: measured batched generation time per frame (report task); fast heads: torch fp32 bs1 latency."""
+    t = jload(f"{RUNS}/{run}/pred_test_timing.json")
+    if t:
+        r = [x for x in t if x["task"] == "report" and x["cond"] == "normal"]
+        return r[0]["seconds"] / r[0]["n"] * 1000 if r else None
+    s = jload(f"{RUNS}/{run}/train_summary.json")
+    return s.get("torch_latency_ms_bs1") if s else None
+
+
+def fig_pareto():
+    """Accuracy vs compute on the TriSAR held-out test: where each head (and their combination) sits."""
+    res = jload(f"{RUNS}/t_router/results.json") or {}
+    pts = [("t_zs_rgb", "VLM zero-shot (RGB)", GRAY, m("t_zs_rgb")),
+           ("t_sft_fusion_l", "VLM fine-tuned, RGB+T+LiDAR", "#9aa0a6", m("t_sft_fusion_l")),
+           ("t_sft_fusion_l_cd50", "VLM + camera-dropout", "#9085e9", m("t_sft_fusion_l_cd50")),
+           ("tf_rgbtl", "fast head, 12M params", "#199e70", m("tf_rgbtl"))]
+    fig, ax = plt.subplots(figsize=(8.8, 4.4))
+    xy = {}
+    for run, lab, c, d in pts:
+        ms, f1 = _ms_per_frame(run), g(d, "report/normal", "all", "f1")
+        if ms is None or f1 is None:
+            continue
+        xy[run] = (ms, f1)
+        ax.scatter(ms, f1, s=110, color=c, zorder=3, edgecolor=SURF, linewidth=1.5)
+        ax.annotate(lab, (ms, f1), xytext=(8, -4), textcoords="offset points", fontsize=9, color=INK)
+    if "union__t_sft_fusion_l_cd50" in res and {"tf_rgbtl", "t_sft_fusion_l_cd50"} <= set(xy):
+        ms = xy["tf_rgbtl"][0] + xy["t_sft_fusion_l_cd50"][0]
+        f1 = g(res, "union__t_sft_fusion_l_cd50", "all", "f1")
+        ax.scatter(ms, f1, s=160, color="#3987e5", marker="*", zorder=4, edgecolor=SURF, linewidth=1)
+        ax.annotate("both heads, combined", (ms, f1), xytext=(8, 4), textcoords="offset points", fontsize=9,
+                    color=INK, weight="bold")
+        for r in ("tf_rgbtl", "t_sft_fusion_l_cd50"):
+            ax.plot([xy[r][0], ms], [xy[r][1], f1], color="#3987e5", lw=0.8, ls=":", zorder=2)
+    ax.axvline(1000 / 30, color=INK2, lw=0.8, ls="--")
+    ax.text(1000 / 30 * 1.05, 0.02, "30 fps budget", color=INK2, fontsize=8)
+    ax.set_xscale("log"); ax.set_xlim(1, 3000)
+    ax.set_xlabel("ms per frame (log). VLM: batched generation on a shared GPU; fast head: batch 1, PyTorch fp32")
+    ax.set_ylabel("person F1, held-out sites"); ax.set_ylim(0, max([v[1] for v in xy.values()] + [0.5]) * 1.25)
+    ax.set_title("Accuracy vs compute on unseen sites (TriSAR-3D test, 2,751 frames, RTX PRO 6000)")
+    return save(fig, "fig_trisar_pareto")
+
+
 def fig_examples(n=4):
     pred = {}
     p = f"{RUNS}/t_sft_fusion_l/pred_test.jsonl"
@@ -208,7 +251,7 @@ def table():
 
 def build():
     figs = {"trisar_ladder": fig_ladder(), "trisar_distance": fig_distance(), "trisar_robust": fig_robust(),
-            "trisar_router": fig_router()}
+            "trisar_router": fig_router(), "trisar_pareto": fig_pareto()}
     try:
         figs["trisar_examples"] = fig_examples()
     except Exception as e:
