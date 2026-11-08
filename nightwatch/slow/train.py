@@ -49,6 +49,7 @@ def main():
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--grad-ckpt", action="store_true")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--drop-rgb", type=float, default=None, help="camera-dropout probability (TriSAR default 0.2)")
     ap.add_argument("--wandb", action="store_true")
     a = ap.parse_args()
 
@@ -70,7 +71,8 @@ def main():
         recs = load_frames(a.fused_dir, set(a.splits.split(",")))
         if a.max_samples:
             recs = random.Random(a.seed).sample(recs, min(a.max_samples, len(recs)))
-        ds = TriSARSFT(recs, a.fused_dir, proc, a.mode, seed=a.seed)
+        drop = (a.drop_rgb if a.drop_rgb is not None else 0.2, 0.1, 0.1)
+        ds = TriSARSFT(recs, a.fused_dir, proc, a.mode, seed=a.seed, drop=drop)
     else:
         recs = load_index(a.index, tuple(a.splits.split(",")))
         if a.max_samples:

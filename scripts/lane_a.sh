@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Lane A (overnight): slow-head SFT runs in series. Resumable; cut a step with `touch STOP_<name>`.
-# Priority (after review): fusion > rgb > thermal-only control > TriSAR rgb > dual > TriSAR rgb+t.
+# Priority: fusion > rgb > thermal-only control > TriSAR rgb > TriSAR fusion_l with camera-dropout 0.5 > dual.
 set -uo pipefail                      # no -e: one failed step must not kill the lane
 cd "$(dirname "$0")/.."
 mkdir -p logs runs; exec 9>logs/laneA.lock; echo "waiting for lane A lock"; flock 9
@@ -14,8 +14,13 @@ EPOCHS=2 MODES=fusion  STAGES=sft bash scripts/run_slow.sh                      
 EPOCHS=2 MODES=rgb     STAGES=sft bash scripts/run_slow.sh                                  # A2 LLVIP RGB only
 EPOCHS=2 MODES=thermal STAGES=sft bash scripts/run_slow.sh                                  # A3 LLVIP thermal only (control)
 EPOCHS=1 MODES=rgb     STAGES=sft bash scripts/run_trisar.sh                                # A4 TriSAR RGB only
+# A5b (replaces the RGB+T middle rung): same fusion_l recipe, camera-dropout 0.5 instead of 0.2.
+# Hypothesis from the 23:15 results: the slow head fails at night because its localisation depends on RGB.
+if on cd50; then
+  RUN_TAG=_cd50 DROP_RGB=0.5 EPOCHS=1 MODES=fusion_l STAGES=sft bash scripts/run_trisar.sh
+  NW_GPU_FRAC=0.45 IBS=32 RUN_TAG=_cd50 MODES=fusion_l STAGES=eval SUB=600 bash scripts/run_trisar.sh
+fi
 on dual     && BS=2 ACC=8 EPOCHS=2 MODES=dual STAGES=sft bash scripts/run_slow.sh           # A5 LLVIP thermal as 2nd image
-on t_fusion && EPOCHS=1 MODES=fusion STAGES=sft bash scripts/run_trisar.sh                  # A6 TriSAR RGB+T (middle rung)
 on dual     && NW_GPU_FRAC=0.45 IBS=32 MODES=dual STAGES=eval EVAL_PARTS="test robust" TEST_LIMIT=1500 SUB=800 \
     bash scripts/run_slow.sh                                                                # A7 dual eval
 echo done > runs/.laneA_done; echo "LANE_A_DONE $(date)"

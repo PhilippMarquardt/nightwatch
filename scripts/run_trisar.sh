@@ -50,9 +50,10 @@ fi
 # ------------------------------------------------------------ 2. SFT: sensor ablation ladder
 if [[ " $STAGES " == *" sft "* ]]; then
   for MODE in $MODES; do
-    OUT=runs/t_sft_$MODE
+    OUT=runs/t_sft_${MODE}${RUN_TAG:-}
     has $OUT/train_summary.json || python -m nightwatch.slow.train --dataset trisar --fused-dir $FUSED --model $MODEL \
         --mode $MODE --splits train --epochs $EPOCHS --bs $BS --grad-accum $ACC --workers $W --grad-ckpt --out $OUT \
+        ${DROP_RGB:+--drop-rgb $DROP_RGB} \
         ${WANDB:+--wandb}
   done
 fi
@@ -60,7 +61,7 @@ fi
 # ------------------------------------------------------------ 3. evaluate (test split = unseen forest + held-out lab scenes)
 if [[ " $STAGES " == *" eval "* ]]; then
   for MODE in $MODES; do
-    OUT=runs/t_sft_$MODE
+    OUT=runs/t_sft_${MODE}${RUN_TAG:-}
     [ -s $OUT/train_summary.json ] || { echo "skip eval $MODE: not trained"; continue; }
     A="--mode $MODE --adapter $OUT --split test"
     has $OUT/pred_test.jsonl    || $INF $A --tasks report --conds normal --out $OUT/pred_test.jsonl          # all 2751 frames
