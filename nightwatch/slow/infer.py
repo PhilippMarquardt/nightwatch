@@ -18,6 +18,7 @@ from nightwatch.data import tasks as T
 from nightwatch.data.llvip import H, W, load_index
 from nightwatch.slow.data import InferDataset, infer_collate
 from nightwatch.slow.model import load_slow_head
+from nightwatch.utils import gpu_mem_cap
 
 TASK_PROMPTS = {
     "detect": (T.EVAL_DETECT_PROMPT, 512),
@@ -65,6 +66,9 @@ def run(model, proc, fusion, recs, root, mode, task, cond, bs, workers, out_fh, 
             out_fh.write(json.dumps(rec) + "\n")
         n += len(ids)
         out_fh.flush()
+        nb = n // max(1, len(ids))
+        if nb % 10 == 0:
+            print(f"progress {task}/{cond}: {n}/{len(ds)} {n / max(time.time() - t0, 1e-6):.2f} img/s", flush=True)
     dt = time.time() - t0
     print(f"{task}/{cond}: {n} imgs in {dt:.0f}s ({n / max(dt, 1e-6):.2f} img/s)", flush=True)
     return {"task": task, "cond": cond, "n": n, "seconds": dt}
@@ -88,6 +92,7 @@ def main():
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
 
+    gpu_mem_cap()
     dev = torch.device("cuda")
     model, proc, fusion = load_slow_head(a.model, a.mode, adapter_dir=a.adapter, device=dev)
     model.eval()
@@ -105,13 +110,15 @@ def main():
             recs = sorted(random.Random(0).sample(recs, min(a.limit, len(recs))), key=lambda r: r.id)
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
     timings = []
-    with open(a.out, "w") as fh:
+    tmp = a.out + ".tmp"            # atomic: a crashed run never leaves a "finished-looking" partial file
+    with open(tmp, "w") as fh:
         for task in a.tasks.split(","):
             for cond in a.conds.split(","):
                 if (a.mode == "rgb" and cond in ("thermal_off", "lidar_off")) or (a.mode == "fusion" and cond == "lidar_off"):
                     continue
                 timings.append(run(model, proc, fusion, recs, a.root, a.mode, task, cond, a.bs, a.workers, fh, dev,
                                    a.dataset, a.fused_dir))
+    os.replace(tmp, a.out)
     json.dump(timings, open(a.out.replace(".jsonl", "_timing.json"), "w"), indent=1)
 
 

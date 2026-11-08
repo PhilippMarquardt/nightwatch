@@ -17,7 +17,7 @@ from nightwatch.data.llvip import load_index
 from nightwatch.eval.metrics import ap50, detect_metrics, height_buckets
 from nightwatch.fast.data import SCALE, augment, load_split, prep_eval
 from nightwatch.fast.model import CenterNetRGBT, centernet_loss, decode, make_targets
-from nightwatch.utils import RunLogger, seed_all
+from nightwatch.utils import RunLogger, gpu_mem_cap, seed_all
 
 IN_CH = {"rgbt": 4, "rgb": 3, "t": 1}
 
@@ -50,7 +50,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--name", required=True)
     ap.add_argument("--splits", default="labeled")
-    ap.add_argument("--labels", default=None, help="pseudo labels json {id: boxes}; overrides GT for those ids")
+    ap.add_argument("--labels", default=None, help="pseudo labels json {id: boxes}; replaces GT on non-labeled splits")
+    ap.add_argument("--min-pseudo-coverage", type=float, default=0.95)
     ap.add_argument("--modal", choices=list(IN_CH), default="rgbt")
     ap.add_argument("--backbone", default="resnet18.a1_in1k")
     ap.add_argument("--epochs", type=int, default=40)
@@ -65,6 +66,7 @@ def main():
     a = ap.parse_args()
     out_dir = f"runs/{a.name}"
     seed_all(a.seed)
+    gpu_mem_cap()
     dev = torch.device("cuda")
     torch.backends.cudnn.benchmark = True
 
@@ -72,8 +74,16 @@ def main():
     xs, bxs, ns = [], [], []
     for sp in a.splits.split(","):
         gt = {r.id: r.boxes for r in load_index(a.index, (sp,))}
-        lab = {i: pseudo.get(i, b) for i, b in gt.items()} if pseudo else gt
-        x, bx, n, _ = load_split(a.cache, sp, dev, lab)
+        use_pseudo = bool(pseudo) and sp != "labeled"
+        lab = {i: pseudo.get(i, []) for i in gt} if use_pseudo else gt
+        x, bx, n, ids = load_split(a.cache, sp, dev, lab)
+        if use_pseudo:   # never fall back to ground truth on the "unlabeled" sites: keep only slow-head-labelled frames
+            keep = torch.tensor([i in pseudo for i in ids])
+            cov = float(keep.float().mean())
+            print(f"{sp}: pseudo-label coverage {cov:.1%} ({int(keep.sum())}/{len(ids)} frames kept, GT never used)", flush=True)
+            if cov < a.min_pseudo_coverage:
+                raise SystemExit(f"pseudo-label coverage {cov:.1%} < {a.min_pseudo_coverage:.0%} - refusing to train")
+            x, bx, n = x[keep.to(x.device)], bx[keep.to(bx.device)], n[keep.to(n.device)]
         xs.append(x); bxs.append(bx); ns.append(n)
     X, BX, N = torch.cat(xs), torch.cat(bxs), torch.cat(ns)
     del xs
@@ -132,7 +142,7 @@ def main():
             for iid, p in zip(test_ids, predict(net, Xt, a.modal, cond)):
                 fh.write(json.dumps({"id": iid, "task": "detect", "cond": cond, **p}) + "\n")
     # latency of the pytorch model (TensorRT numbers come from export.py)
-    xb = prep_eval(Xt[:1], a.modal).contiguous(memory_format=torch.channels_last)
+    xb = prep_eval(Xt[:1].to(dev), a.modal).contiguous(memory_format=torch.channels_last)
     net.eval()
     with torch.no_grad(), torch.autocast("cuda", dtype=torch.float16):
         for _ in range(20):

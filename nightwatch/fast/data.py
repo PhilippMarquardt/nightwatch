@@ -64,6 +64,8 @@ def load_split(cache_dir, split, device, label_map=None, index=None):
     if label_map is None:
         label_map = {r.id: r.boxes for r in load_index(index, (split,))}
     bx, n = boxes_tensor(ids, label_map)
+    if os.environ.get("NW_FAST_CPU"):
+        return x.pin_memory(), bx.to(device), n.to(device), ids
     try:
         x = x.to(device)
     except torch.OutOfMemoryError:

@@ -26,7 +26,7 @@ from PIL import Image
 
 from nightwatch.fast.model import STRIDE, CenterNetRGBT, _head, focal_loss
 from nightwatch.slow.data_trisar import FH, FW, POSE3, load_frames
-from nightwatch.utils import RunLogger, seed_all
+from nightwatch.utils import RunLogger, gpu_mem_cap, seed_all
 
 CLASSES = ["upright", "sitting", "lying"]
 CH = {"rgbtl": [0, 1, 2, 3, 4, 5, 6], "rgbt": [0, 1, 2, 3], "rgb": [0, 1, 2], "t": [3], "tl": [3, 4, 5, 6]}
@@ -213,6 +213,7 @@ def main():
     a = ap.parse_args()
     out_dir = f"runs/{a.name}"
     seed_all(a.seed)
+    gpu_mem_cap()
     dev = torch.device("cuda")
     torch.backends.cudnn.benchmark = True
     idx_ch = CH[a.modal]
@@ -229,10 +230,13 @@ def main():
             if d["task"] == "report" and d["cond"] == "normal":
                 label_map[d["id"]] = d["persons"]
     X = torch.from_numpy(np.load(f"{a.cache}/train.npy", mmap_mode="r")[:])
-    try:
-        X = X.to(dev)
-    except torch.OutOfMemoryError:
-        X = X.pin_memory()
+    if os.environ.get("NW_FAST_CPU"):
+        X = X.pin_memory()          # frames stay in host RAM; batches are copied over (GPU stays free for the slow head)
+    else:
+        try:
+            X = X.to(dev)
+        except torch.OutOfMemoryError:
+            X = X.pin_memory()
     TT, NN = targets_tensor(tr_frames, label_map)
     TT, NN = TT.to(dev), NN.to(dev)
     Xv = torch.from_numpy(np.load(f"{a.cache}/val.npy", mmap_mode="r")[:])

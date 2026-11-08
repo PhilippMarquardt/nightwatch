@@ -21,7 +21,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 from nightwatch.data.llvip import load_index
 from nightwatch.slow.data import SFTDataset, sft_collate
 from nightwatch.slow.model import load_slow_head
-from nightwatch.utils import RunLogger, seed_all
+from nightwatch.utils import RunLogger, gpu_mem_cap, seed_all
 
 
 def main():
@@ -58,6 +58,7 @@ def main():
         dist.init_process_group("nccl")
         rank = dist.get_rank()
         torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))
+    gpu_mem_cap()
     dev = torch.device("cuda", torch.cuda.current_device())
     seed_all(a.seed + rank)
 

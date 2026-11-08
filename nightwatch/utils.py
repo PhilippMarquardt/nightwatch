@@ -10,6 +10,15 @@ import numpy as np
 import torch
 
 
+def gpu_mem_cap():
+    """NW_GPU_FRAC=0.47 caps this process's share of GPU memory so two jobs can share one GPU safely."""
+    frac = os.environ.get("NW_GPU_FRAC")
+    if frac and torch.cuda.is_available():
+        torch.cuda.set_per_process_memory_fraction(float(frac))
+        print(f"gpu memory cap: {float(frac):.2f} of {torch.cuda.get_device_properties(0).total_memory / 2**30:.0f} GiB",
+              flush=True)
+
+
 def seed_all(s: int):
     random.seed(s)
     np.random.seed(s)

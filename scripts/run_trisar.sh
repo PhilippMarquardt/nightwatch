@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# TriSAR-3D stage: RGB + thermal + LiDAR. Resumable (finished stages are skipped).
-#   bash scripts/run_trisar.sh                         # everything
-#   STAGES="data zeroshot sft" bash scripts/run_trisar.sh
+# TriSAR-3D stage: RGB + thermal + LiDAR. Resumable (finished steps are skipped).
+#   bash scripts/run_trisar.sh                                 # everything
+#   STAGES="sft" MODES="rgb" bash scripts/run_trisar.sh        # one rung of the sensor ladder
+#   STAGES=none bash scripts/run_trisar.sh                     # only re-score
+# Env: MODES, FAST_MODALS, EPOCHS, BS, ACC, IBS, SUB, WORKERS, NW_GPU_FRAC, NW_FAST_CPU
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p logs runs
@@ -10,14 +12,19 @@ MODEL=${NW_MODEL:-Qwen/Qwen3.5-9B}
 # "pseudo" (+ tf_distill) is opt-in: the slow head is trained on all train scenes, so labelling them again is circular.
 # The LLVIP stage carries the distillation story; here the point is the sensor ladder.
 STAGES=${STAGES:-"data zeroshot sft eval fast"}
+MODES=${MODES:-"fusion_l fusion rgb"}
+FAST_MODALS=${FAST_MODALS:-"rgbtl rgbt rgb tl"}
 FUSED=${FUSED:-data/trisar_fused}
 STRIDE=${STRIDE:-2}          # every 2nd frame (10 Hz -> 5 Hz); consecutive frames are near-duplicates
-EPOCHS=${EPOCHS:-1}   # 6.4k frames at 5 Hz; 1 epoch is enough for LoRA
-SUB=${SUB:-600}
+EPOCHS=${EPOCHS:-1}          # 6.4k frames at 5 Hz; 1 epoch is enough for LoRA
+SUB=${SUB:-600}              # same fixed-seed 600-frame subset as the zero-shot baseline (QA + robustness)
 W=${WORKERS:-12}
 GPU_MEM=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1)
-if [ "$GPU_MEM" -gt 90000 ]; then BS=8; ACC=2; IBS=96; else BS=4; ACC=4; IBS=24; fi   # H200 / RTX PRO 6000 (96 GB) vs A100-80G
+if [ "$GPU_MEM" -gt 90000 ]; then dBS=8; dACC=2; dIBS=96; else dBS=4; dACC=4; dIBS=24; fi
+BS=${BS:-$dBS}; ACC=${ACC:-$dACC}; IBS=${IBS:-$dIBS}
 has() { [ -s "$1" ]; }
+INF="python -m nightwatch.slow.infer --dataset trisar --fused-dir $FUSED --model $MODEL --bs $IBS --workers $W"
+echo "trisar: stages=$STAGES modes=$MODES fast=$FAST_MODALS bs=$BS acc=$ACC ibs=$IBS"
 
 # ------------------------------------------------------------ 0. data
 if [[ " $STAGES " == *" data "* ]]; then
@@ -36,13 +43,13 @@ fi
 # ------------------------------------------------------------ 1. zero-shot (stock VLM, RGB only)
 if [[ " $STAGES " == *" zeroshot "* ]]; then
   OUT=runs/t_zs_rgb
-  has $OUT/pred_test.jsonl || python -m nightwatch.slow.infer --dataset trisar --fused-dir $FUSED --model $MODEL --mode rgb \
-      --split test --tasks report,lying,nearest --conds normal --limit $SUB --bs $IBS --workers $W --out $OUT/pred_test.jsonl
+  has $OUT/pred_test.jsonl || $INF --mode rgb --split test --tasks report,lying,nearest --conds normal --limit $SUB \
+      --out $OUT/pred_test.jsonl
 fi
 
 # ------------------------------------------------------------ 2. SFT: sensor ablation ladder
 if [[ " $STAGES " == *" sft "* ]]; then
-  for MODE in fusion_l fusion rgb; do
+  for MODE in $MODES; do
     OUT=runs/t_sft_$MODE
     has $OUT/train_summary.json || python -m nightwatch.slow.train --dataset trisar --fused-dir $FUSED --model $MODEL \
         --mode $MODE --splits train --epochs $EPOCHS --bs $BS --grad-accum $ACC --workers $W --grad-ckpt --out $OUT \
@@ -50,35 +57,37 @@ if [[ " $STAGES " == *" sft "* ]]; then
   done
 fi
 
-# ------------------------------------------------------------ 3. evaluate (test split)
+# ------------------------------------------------------------ 3. evaluate (test split = unseen forest + held-out lab scenes)
 if [[ " $STAGES " == *" eval "* ]]; then
-  for MODE in fusion_l fusion rgb; do
+  for MODE in $MODES; do
     OUT=runs/t_sft_$MODE
-    has $OUT/pred_test.jsonl || python -m nightwatch.slow.infer --dataset trisar --fused-dir $FUSED --model $MODEL --mode $MODE \
-        --adapter $OUT --split test --tasks report,lying,nearest --conds normal --bs $IBS --workers $W --out $OUT/pred_test.jsonl
-    has $OUT/pred_test_robust.jsonl || python -m nightwatch.slow.infer --dataset trisar --fused-dir $FUSED --model $MODEL \
-        --mode $MODE --adapter $OUT --split test --tasks report --conds rgb_off,thermal_off,lidar_off --limit $SUB \
-        --bs $IBS --workers $W --out $OUT/pred_test_robust.jsonl
+    [ -s $OUT/train_summary.json ] || { echo "skip eval $MODE: not trained"; continue; }
+    A="--mode $MODE --adapter $OUT --split test"
+    has $OUT/pred_test.jsonl    || $INF $A --tasks report --conds normal --out $OUT/pred_test.jsonl          # all 2751 frames
+    has $OUT/pred_test_qa.jsonl || $INF $A --tasks lying,nearest --conds normal --limit $SUB --out $OUT/pred_test_qa.jsonl
+    has $OUT/pred_test_robust.jsonl || $INF $A --tasks report --conds rgb_off,thermal_off,lidar_off --limit $SUB \
+        --out $OUT/pred_test_robust.jsonl
   done
 fi
 
-# ------------------------------------------------------------ 4. slow head labels the train split (distillation source)
+# ------------------------------------------------------------ 4. slow head labels the train split (opt-in)
 if [[ " $STAGES " == *" pseudo "* ]]; then
   OUT=runs/t_sft_fusion_l
-  has $OUT/pred_train.jsonl || python -m nightwatch.slow.infer --dataset trisar --fused-dir $FUSED --model $MODEL \
-      --mode fusion_l --adapter $OUT --split train --tasks report --conds normal --bs $IBS --workers $W --out $OUT/pred_train.jsonl
+  has $OUT/pred_train.jsonl || $INF --mode fusion_l --adapter $OUT --split train --tasks report --conds normal \
+      --out $OUT/pred_train.jsonl
 fi
 
-# ------------------------------------------------------------ 5. fast heads: modality ladder + distilled
+# ------------------------------------------------------------ 5. fast heads: modality ladder (+ distilled, opt-in)
 if [[ " $STAGES " == *" fast "* ]]; then
-  for M in rgbtl rgbt rgb tl; do
+  for M in $FAST_MODALS; do
     has runs/tf_$M/train_summary.json || python -m nightwatch.fast.trisar --name tf_$M --modal $M --fused-dir $FUSED
   done
-  [ -s runs/t_sft_fusion_l/pred_train.jsonl ] && { has runs/tf_distill/train_summary.json || \
-      python -m nightwatch.fast.trisar --name tf_distill --modal rgbtl --fused-dir $FUSED --labels runs/t_sft_fusion_l/pred_train.jsonl; }
+  if [ -s runs/t_sft_fusion_l/pred_train.jsonl ] && [ ! -s runs/tf_distill/train_summary.json ]; then
+    python -m nightwatch.fast.trisar --name tf_distill --modal rgbtl --fused-dir $FUSED --labels runs/t_sft_fusion_l/pred_train.jsonl
+  fi
 fi
 
-# ------------------------------------------------------------ metrics
+# ------------------------------------------------------------ metrics (TriSAR runs only)
 for f in runs/t_*/pred_test*.jsonl runs/tf_*/pred_test.jsonl; do
   [ -s "$f" ] || continue
   thr=""
@@ -86,6 +95,8 @@ for f in runs/t_*/pred_test*.jsonl runs/tf_*/pred_test.jsonl; do
   python -m nightwatch.eval.metrics_trisar --pred $f --fused-dir $FUSED ${thr:+--score-thr $thr} --out ${f%.jsonl}_metrics.json \
       > /dev/null || echo "metrics failed: $f"
 done
-[ -s runs/t_sft_fusion_l/pred_train.jsonl ] && python -m nightwatch.eval.metrics_trisar --pred runs/t_sft_fusion_l/pred_train.jsonl \
-    --fused-dir $FUSED --split train --out runs/t_sft_fusion_l/pred_train_metrics.json > /dev/null || true
+if [ -s runs/t_sft_fusion_l/pred_train.jsonl ]; then
+  python -m nightwatch.eval.metrics_trisar --pred runs/t_sft_fusion_l/pred_train.jsonl --fused-dir $FUSED --split train \
+      --out runs/t_sft_fusion_l/pred_train_metrics.json > /dev/null || true
+fi
 echo "TRISAR DONE"
