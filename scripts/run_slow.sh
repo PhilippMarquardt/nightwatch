@@ -69,6 +69,13 @@ print("pseudo labels:", len(lab), "images,", sum(len(v) for v in lab.values()), 
 EOF
 fi
 
+# ---------------------------------------------------------------- 5. optional: GRPO on top of the fusion SFT
+if [[ " $STAGES " == *" grpo "* ]]; then
+  OUT=runs/grpo_fusion
+  has $OUT/train_summary.json || python -m nightwatch.slow.grpo --model $MODEL --init runs/sft_fusion --out $OUT       --steps ${GRPO_STEPS:-120}
+  has $OUT/pred_test.jsonl || python -m nightwatch.slow.infer --model $MODEL --mode fusion --adapter $OUT --split test       --tasks detect --conds normal --bs $IBS --workers $W --out $OUT/pred_test.jsonl
+fi
+
 for f in runs/*/pred_*.jsonl; do
   python -m nightwatch.eval.metrics --pred $f --split $( [[ $f == *val* ]] && echo val || echo test ) \
       --out ${f%.jsonl}_metrics.json > /dev/null 2>&1 || true

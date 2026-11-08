@@ -27,19 +27,19 @@ RUNS = os.environ.get("NW_RUNS", "runs")
 SURF, INK, INK2, GRID = "#1a1a19", "#f0efec", "#c3c2b7", "#3a3936"
 GRAY = "#8a8983"
 COL = {
-    "sft_fusion": "#3987e5", "sft_dual": "#d95926", "sft_rgb": "#199e70",
+    "sft_fusion": "#3987e5", "grpo_fusion": "#9085e9", "sft_dual": "#d95926", "sft_rgb": "#199e70",
     "zs_rgb": GRAY, "zs_dual": "#6b6a65",
     "fast_distill": "#c98500", "fast_oracle": "#d55181", "fast_gt_labeled": "#9085e9",
     "fast_oracle_rgb": "#199e70", "fast_oracle_t": "#e66767",
 }
 NAME = {
     "zs_rgb": "Qwen3-VL-8B zero-shot (RGB)", "zs_dual": "Qwen3-VL-8B zero-shot (RGB + T image)",
-    "sft_rgb": "LoRA, RGB only", "sft_dual": "LoRA, thermal as 2nd image", "sft_fusion": "LoRA + native thermal fusion (ours)",
+    "sft_rgb": "LoRA, RGB only", "sft_dual": "LoRA, thermal as 2nd image", "sft_fusion": "LoRA + native thermal fusion (ours)", "grpo_fusion": "fusion + GRPO (F1 reward)",
     "fast_gt_labeled": "Fast head, 7 labeled sites", "fast_distill": "Fast head, distilled from slow head",
     "fast_oracle": "Fast head, all sites hand-labeled", "fast_oracle_rgb": "Fast head, RGB only (oracle labels)",
     "fast_oracle_t": "Fast head, thermal only (oracle labels)",
 }
-SLOW = ["zs_rgb", "zs_dual", "sft_rgb", "sft_dual", "sft_fusion"]
+SLOW = ["zs_rgb", "zs_dual", "sft_rgb", "sft_dual", "sft_fusion", "grpo_fusion"]
 FAST = ["fast_gt_labeled", "fast_distill", "fast_oracle", "fast_oracle_rgb", "fast_oracle_t"]
 
 plt.rcParams.update({
