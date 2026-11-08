@@ -355,6 +355,13 @@ def main():
         figs["examples"] = fig_examples()
     except Exception as e:
         print("examples skipped:", e); figs["examples"] = None
+    trisar_table = ""
+    try:
+        from nightwatch.report.trisar_report import build as build_trisar
+        tfigs, trisar_table = build_trisar()
+        figs.update(tfigs)
+    except Exception as e:
+        print("trisar section skipped:", e)
     pseudo = metrics("sft_fusion", "pred_unlabeled_metrics")
     gate = jload(f"{RUNS}/gate.json")
     res = {"headline_f1": head, "escalation": esc and {k: esc[k] for k in ("fast_only_f1", "slow_only_f1")},
@@ -362,6 +369,8 @@ def main():
            "gate": gate and gate["verdict"], "deploy": dep, "figures": {k: v for k, v in figs.items() if v}}
     json.dump(res, open(f"{OUT}/results.json", "w"), indent=1)
     md = ["# Night Watch: results", "", summary_table(), "", reason_table(), ""]
+    if trisar_table:
+        md += ["## TriSAR-3D: RGB + thermal + LiDAR", "", trisar_table, ""]
     for k, v in figs.items():
         if v:
             md += [f"![{k}]({v})", ""]

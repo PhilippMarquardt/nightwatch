@@ -14,3 +14,5 @@ runs_fake/
 report_fake/
 report/
 logs_local2b.txt
+data/trisar*
+data/raw/

@@ -31,9 +31,9 @@ THERMAL_MEAN, THERMAL_STD = 0.449, 0.226
 class ThermalEncoder(nn.Module):
     """DINOv3 ConvNeXt with a 1-channel stem (timm sums the RGB stem weights)."""
 
-    def __init__(self, name: str = "convnext_tiny.dinov3_lvd1689m", pretrained: bool = True):
+    def __init__(self, name: str = "convnext_tiny.dinov3_lvd1689m", pretrained: bool = True, in_chans: int = 1):
         super().__init__()
-        self.net = timm.create_model(name, pretrained=pretrained, in_chans=1, features_only=True, out_indices=(2, 3))
+        self.net = timm.create_model(name, pretrained=pretrained, in_chans=in_chans, features_only=True, out_indices=(2, 3))
         chs = self.net.feature_info.channels()
         self.out_dim = sum(chs)
 
@@ -60,44 +60,92 @@ class GatedProj(nn.Module):
         return self.gate * self.mlp(self.norm(t))
 
 
+class SensorBranch(nn.Module):
+    """One extra pixel-aligned sensor (e.g. LiDAR range/intensity/hit maps) -> additive tokens."""
+
+    def __init__(self, d_model, n_deepstack, encoder, in_chans, pretrained=True):
+        super().__init__()
+        self.encoder = ThermalEncoder(encoder, pretrained, in_chans)
+        c = self.encoder.out_dim
+        self.main = GatedProj(c, d_model, hidden=min(2048, d_model))
+        self.deep = nn.ModuleList([GatedProj(c, d_model, hidden=512) for _ in range(n_deepstack)])
+        self.sensor_emb = nn.Parameter(torch.zeros(c))
+
+
 class ThermalFusion(nn.Module):
-    def __init__(self, d_model: int, n_deepstack: int, encoder: str, pretrained=True):
+    """Thermal (+ optional extra sensors) fused onto the VLM's visual token grid.
+
+    extra_sensors={"lidar": 3} adds one branch per sensor; all branches are summed onto the RGB tokens.
+    Thermal keeps its original parameter names, so LLVIP checkpoints still load.
+    """
+
+    def __init__(self, d_model: int, n_deepstack: int, encoder: str, pretrained=True, extra_sensors: dict | None = None):
         super().__init__()
         self.encoder = ThermalEncoder(encoder, pretrained)
         c = self.encoder.out_dim
         self.main = GatedProj(c, d_model, hidden=min(2048, d_model))
         self.deep = nn.ModuleList([GatedProj(c, d_model, hidden=512) for _ in range(n_deepstack)])
         self.sensor_emb = nn.Parameter(torch.zeros(c))   # thermal sensor-type embedding
+        self.extra = nn.ModuleDict({k: SensorBranch(d_model, n_deepstack, encoder, ch, pretrained)
+                                    for k, ch in (extra_sensors or {}).items()})
         self._thermal = None
+        self._extra = {}
 
     def set_thermal(self, t):
         self._thermal = t
 
+    def set_extra(self, tensors: dict):
+        self._extra = tensors or {}
+
+    def _branches(self):
+        yield "thermal", self.encoder, self.main, self.deep, self.sensor_emb, self._thermal
+        for k, br in self.extra.items():
+            yield k, br.encoder, br.main, br.deep, br.sensor_emb, self._extra.get(k)
+
     def hook(self, module, args, output):
-        if self._thermal is None:
-            return output
-        t = self._thermal
-        feats = self.encoder(t.to(next(self.encoder.parameters()).dtype)) + self.sensor_emb
-        feats = feats.reshape(-1, feats.shape[-1])                  # (B*h*w, C)
         po = output.pooler_output
-        if feats.shape[0] != po.shape[0]:
-            raise RuntimeError(f"thermal tokens {feats.shape[0]} != visual tokens {po.shape[0]} "
-                               f"(fusion mode needs exactly one {IMG_W}x{IMG_H} RGB image per sample)")
-        add = self.main(feats).to(po.dtype)
-        self._ratio = {"main": float(add.float().norm(dim=-1).mean() / po.float().norm(dim=-1).mean().clamp(min=1e-6))}
-        output.pooler_output = po + add
-        if getattr(output, "deepstack_features", None):
-            new = []
-            for i, (d, p) in enumerate(zip(output.deepstack_features, self.deep)):
-                a = p(feats).to(d.dtype)
+        deep = list(output.deepstack_features) if getattr(output, "deepstack_features", None) else None
+        add_main = torch.zeros_like(po)
+        add_deep = [torch.zeros_like(d) for d in deep] if deep else None
+        self._ratio = {}
+        rgb_norm = po.float().norm(dim=-1).mean().clamp(min=1e-6)
+        for name, enc, main, deepp, emb, x in self._branches():
+            if x is None:
+                continue
+            feats = enc(x.to(next(enc.parameters()).dtype)) + emb
+            feats = feats.reshape(-1, feats.shape[-1])                  # (B*h*w, C)
+            if feats.shape[0] != po.shape[0]:
+                raise RuntimeError(f"{name} tokens {feats.shape[0]} != visual tokens {po.shape[0]} "
+                                   f"(fusion mode needs exactly one {IMG_W}x{IMG_H} RGB image per sample)")
+            a = main(feats).to(po.dtype)
+            add_main = add_main + a
+            self._ratio["main" if name == "thermal" else name] = float(a.float().norm(dim=-1).mean() / rgb_norm)
+            if deep:
+                for i, p in enumerate(deepp):
+                    add_deep[i] = add_deep[i] + p(feats).to(deep[i].dtype)
+        if not self._ratio:
+            return output
+        output.pooler_output = po + add_main
+        if deep:
+            for i, (d, a) in enumerate(zip(deep, add_deep)):
                 self._ratio[f"deep{i}"] = float(a.float().norm(dim=-1).mean() / d.float().norm(dim=-1).mean().clamp(min=1e-6))
-                new.append(d + a)
-            output.deepstack_features = new
+            output.deepstack_features = [d + a for d, a in zip(deep, add_deep)]
         return output
 
     def gate_values(self):
         """Thermal contribution as a fraction of the RGB token norm (last forward pass)."""
         return dict(getattr(self, "_ratio", {}))
+
+
+LIDAR_MEAN = torch.tensor([0.10, 0.20, 0.45]).view(3, 1, 1)
+LIDAR_STD = torch.tensor([0.15, 0.25, 0.50]).view(3, 1, 1)
+
+
+def lidar_tensor(img_rgb):
+    """PIL RGB lidar map (inverse range, intensity, hit mask), already resized -> (3,H,W)."""
+    import numpy as np
+    a = torch.from_numpy(np.asarray(img_rgb, dtype=np.uint8).copy()).permute(2, 0, 1).float().div_(255.0)
+    return (a - LIDAR_MEAN) / LIDAR_STD
 
 
 def thermal_tensor(img_l):
@@ -120,10 +168,12 @@ def load_slow_head(model_path: str, mode: str, lora: dict | None = None, adapter
     model.to(device)
     model.requires_grad_(False)
     fusion = None
-    if mode == "fusion":
+    if mode in ("fusion", "fusion_l"):
         tc = model.config.text_config
         n_deep = len(getattr(model.config.vision_config, "deepstack_visual_indexes", []) or [])
-        fusion = ThermalFusion(tc.hidden_size, n_deep, thermal_encoder, pretrained=adapter_dir is None).to(device)
+        extra = {"lidar": 3} if mode == "fusion_l" else None
+        fusion = ThermalFusion(tc.hidden_size, n_deep, thermal_encoder, pretrained=adapter_dir is None,
+                               extra_sensors=extra).to(device)
         if adapter_dir:
             fusion.load_state_dict(torch.load(os.path.join(adapter_dir, "fusion.pt"), map_location=device))
         model.model.visual.register_forward_hook(fusion.hook)

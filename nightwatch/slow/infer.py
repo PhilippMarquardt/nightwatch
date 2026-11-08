@@ -28,24 +28,40 @@ TASK_PROMPTS = {
 }
 
 
+TRISAR_TASKS = {"report": 640, "lying": 4, "nearest": 8, "count": 8}
+
+
 @torch.no_grad()
-def run(model, proc, fusion, recs, root, mode, task, cond, bs, workers, out_fh, dev):
-    prompt, max_new = TASK_PROMPTS[task]
-    ds = InferDataset(recs, root, proc, mode, prompt, cond)
+def run(model, proc, fusion, recs, root, mode, task, cond, bs, workers, out_fh, dev, dataset="llvip", fused_dir=None):
+    if dataset == "trisar":
+        from nightwatch.slow import data_trisar as DT
+        prompt = {"report": DT.REPORT_PROMPT, "lying": DT.LYING_PROMPT, "nearest": DT.NEAREST_PROMPT,
+                  "count": DT.COUNT_PROMPT}[task]
+        max_new = TRISAR_TASKS[task]
+        ds = DT.TriSARInfer(recs, fused_dir, proc, mode, prompt, cond)
+    else:
+        prompt, max_new = TASK_PROMPTS[task]
+        ds = InferDataset(recs, root, proc, mode, prompt, cond)
     dl = DataLoader(ds, batch_size=bs, num_workers=workers, collate_fn=partial(infer_collate, proc=proc))
     n, t0 = 0, time.time()
     for batch in dl:
         ids = batch.pop("ids")
         th = batch.pop("thermal").to(dev)
+        li = batch.pop("lidar", None)
         batch = {k: v.to(dev) for k, v in batch.items()}
         if fusion is not None:
             fusion.set_thermal(th)
+            fusion.set_extra({"lidar": li.to(dev)} if (li is not None and "lidar" in fusion.extra) else {})
         out = model.generate(**batch, max_new_tokens=max_new, do_sample=False)
         texts = proc.batch_decode(out[:, batch["input_ids"].shape[1]:], skip_special_tokens=True)
         for iid, txt in zip(ids, texts):
             rec = {"id": iid, "task": task, "cond": cond, "text": txt}
             if task == "detect":
                 rec["boxes"] = T.from_qwen(T.parse_boxes(txt), W, H)
+            elif task == "report":
+                from nightwatch.slow.data_trisar import FH, FW, parse_report
+                rec["persons"] = [{"box": T.from_qwen([o["box"]], FW, FH)[0], "pose": o["pose"], "distance": o["distance"]}
+                                  for o in parse_report(txt)]
             out_fh.write(json.dumps(rec) + "\n")
         n += len(ids)
         out_fh.flush()
@@ -57,7 +73,9 @@ def run(model, proc, fusion, recs, root, mode, task, cond, bs, workers, out_fh, 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="Qwen/Qwen3.5-9B")
-    ap.add_argument("--mode", choices=["rgb", "dual", "fusion"], required=True)
+    ap.add_argument("--mode", choices=["rgb", "dual", "fusion", "fusion_l"], required=True)
+    ap.add_argument("--dataset", choices=["llvip", "trisar"], default="llvip")
+    ap.add_argument("--fused-dir", default="data/trisar_fused")
     ap.add_argument("--adapter", default=None)
     ap.add_argument("--root", default="data/raw/LLVIP")
     ap.add_argument("--index", default="data/index.json")
@@ -76,17 +94,24 @@ def main():
     if fusion is not None:
         fusion.eval()
         print("gates", fusion.gate_values())
-    recs = load_index(a.index, tuple(a.split.split(",")))
-    if a.limit:
-        recs = sorted(random.Random(0).sample(recs, min(a.limit, len(recs))), key=lambda r: r.id)
+    if a.dataset == "trisar":
+        from nightwatch.slow.data_trisar import load_frames
+        recs = load_frames(a.fused_dir, set(a.split.split(",")))
+        if a.limit:
+            recs = sorted(random.Random(0).sample(recs, min(a.limit, len(recs))), key=lambda r: r["id"])
+    else:
+        recs = load_index(a.index, tuple(a.split.split(",")))
+        if a.limit:
+            recs = sorted(random.Random(0).sample(recs, min(a.limit, len(recs))), key=lambda r: r.id)
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
     timings = []
     with open(a.out, "w") as fh:
         for task in a.tasks.split(","):
             for cond in a.conds.split(","):
-                if a.mode == "rgb" and cond == "thermal_off":
+                if (a.mode == "rgb" and cond in ("thermal_off", "lidar_off")) or (a.mode == "fusion" and cond == "lidar_off"):
                     continue
-                timings.append(run(model, proc, fusion, recs, a.root, a.mode, task, cond, a.bs, a.workers, fh, dev))
+                timings.append(run(model, proc, fusion, recs, a.root, a.mode, task, cond, a.bs, a.workers, fh, dev,
+                                   a.dataset, a.fused_dir))
     json.dump(timings, open(a.out.replace(".jsonl", "_timing.json"), "w"), indent=1)
 
 

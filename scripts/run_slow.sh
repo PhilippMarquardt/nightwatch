@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.."
 MODEL=${NW_MODEL:-Qwen/Qwen3.5-9B}
 STAGES=${STAGES:-"zeroshot sft eval pseudo"}
 GPU_MEM=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1)
-if [ "$GPU_MEM" -gt 100000 ]; then BS=8; ACC=2; IBS=48; else BS=4; ACC=4; IBS=24; fi   # H200 vs A100-80G
+if [ "$GPU_MEM" -gt 90000 ]; then BS=8; ACC=2; IBS=48; else BS=4; ACC=4; IBS=24; fi   # H200 / RTX PRO 6000 (96 GB) vs A100-80G
 EPOCHS=${EPOCHS:-2}
 SUB=${SUB:-800}      # subset size for the expensive robustness conditions
 W=${WORKERS:-12}

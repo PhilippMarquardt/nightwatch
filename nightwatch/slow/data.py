@@ -92,7 +92,8 @@ def sft_collate(batch, pad_id):
     return {"input_ids": ids, "labels": lab, "attention_mask": att,
             "pixel_values": torch.cat([b["pixel_values"] for b in batch]),
             "image_grid_thw": torch.cat([b["image_grid_thw"] for b in batch]),
-            "thermal": torch.stack([b["thermal"] for b in batch])}
+            "thermal": torch.stack([b["thermal"] for b in batch]),
+            **({"lidar": torch.stack([b["lidar"] for b in batch])} if "lidar" in batch[0] else {})}
 
 
 class InferDataset(Dataset):
@@ -123,5 +124,7 @@ def infer_collate(batch, proc):
     enc = proc(text=[b["text"] for b in batch], images=[im for b in batch for im in b["images"]],
                return_tensors="pt", padding=True)
     enc["thermal"] = torch.stack([b["thermal"] for b in batch])
+    if "lidar" in batch[0]:
+        enc["lidar"] = torch.stack([b["lidar"] for b in batch])
     enc["ids"] = [b["id"] for b in batch]
     return enc

@@ -27,7 +27,9 @@ from nightwatch.utils import RunLogger, seed_all
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="Qwen/Qwen3.5-9B")
-    ap.add_argument("--mode", choices=["rgb", "dual", "fusion"], required=True)
+    ap.add_argument("--mode", choices=["rgb", "dual", "fusion", "fusion_l"], required=True)
+    ap.add_argument("--dataset", choices=["llvip", "trisar"], default="llvip")
+    ap.add_argument("--fused-dir", default="data/trisar_fused")
     ap.add_argument("--root", default="data/raw/LLVIP")
     ap.add_argument("--index", default="data/index.json")
     ap.add_argument("--splits", default="labeled")
@@ -62,13 +64,20 @@ def main():
     model, proc, fusion = load_slow_head(a.model, a.mode, lora={"r": a.lora_r}, device=dev, grad_ckpt=a.grad_ckpt)
     if fusion is not None:
         fusion.train()
-    recs = load_index(a.index, tuple(a.splits.split(",")))
-    if a.max_samples:
-        recs = random.Random(a.seed).sample(recs, min(a.max_samples, len(recs)))
-    labels = None
-    if a.labels:
-        labels = json.load(open(a.labels))
-    ds = SFTDataset(recs, a.root, proc, a.mode, seed=a.seed, labels=labels)
+    if a.dataset == "trisar":
+        from nightwatch.slow.data_trisar import TriSARSFT, load_frames
+        recs = load_frames(a.fused_dir, set(a.splits.split(",")))
+        if a.max_samples:
+            recs = random.Random(a.seed).sample(recs, min(a.max_samples, len(recs)))
+        ds = TriSARSFT(recs, a.fused_dir, proc, a.mode, seed=a.seed)
+    else:
+        recs = load_index(a.index, tuple(a.splits.split(",")))
+        if a.max_samples:
+            recs = random.Random(a.seed).sample(recs, min(a.max_samples, len(recs)))
+        labels = None
+        if a.labels:
+            labels = json.load(open(a.labels))
+        ds = SFTDataset(recs, a.root, proc, a.mode, seed=a.seed, labels=labels)
     sampler = DistributedSampler(ds, shuffle=True, seed=a.seed) if ddp else None
     dl = DataLoader(ds, batch_size=a.bs, shuffle=sampler is None, sampler=sampler, num_workers=a.workers,
                     collate_fn=partial(sft_collate, pad_id=proc.tokenizer.pad_token_id), drop_last=True,
@@ -108,9 +117,12 @@ def main():
         ds.epoch = epoch
         for batch in dl:
             th = batch.pop("thermal").to(dev, non_blocking=True)
+            li = batch.pop("lidar", None)
+            li = li.to(dev, non_blocking=True) if li is not None else None
             batch = {k: v.to(dev, non_blocking=True) for k, v in batch.items()}
             if fusion is not None:
                 fusion.set_thermal(th)
+                fusion.set_extra({"lidar": li} if (li is not None and "lidar" in fusion.extra) else {})
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 out = model(**batch)
                 loss = out.loss / a.grad_accum
