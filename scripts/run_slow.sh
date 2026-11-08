@@ -10,7 +10,7 @@ cd "$(dirname "$0")/.."
 MODEL=${NW_MODEL:-Qwen/Qwen3.5-9B}
 STAGES=${STAGES:-"zeroshot sft eval pseudo"}
 MODES=${MODES:-"fusion dual rgb"}
-GPU_MEM=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1)
+GPU_MEM=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1); GPU_MEM=${GPU_MEM:-0}
 if [ "$GPU_MEM" -gt 90000 ]; then dBS=8; dACC=2; dIBS=96; else dBS=4; dACC=4; dIBS=24; fi   # 96+ GB vs A100-80G
 BS=${BS:-$dBS}; ACC=${ACC:-$dACC}; IBS=${IBS:-$dIBS}
 EPOCHS=${EPOCHS:-2}

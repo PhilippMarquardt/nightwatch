@@ -115,11 +115,11 @@ def _apply_cond(rgb, th, li, cond):
         th = Image.new("L", th.size)
     elif cond == "lidar_off":
         li = Image.new("RGB", li.size)
-    elif cond == "thermal_stretch":     # per-frame p2-p99.5 contrast stretch (forest thermal is a distribution shift)
+    elif cond == "thermal_stretch":     # per-frame match to the lab training distribution: median -> 135, p99.5 -> 235
         import numpy as _np
         a = _np.asarray(th, dtype=_np.float32)
-        lo, hi = _np.percentile(a, 2), _np.percentile(a, 99.5)
-        th = Image.fromarray(_np.clip((a - lo) / max(hi - lo, 1.0) * 255, 0, 255).astype(_np.uint8))
+        med, hi = _np.median(a), _np.percentile(a, 99.5)
+        th = Image.fromarray(_np.clip(135 + (a - med) * (100.0 / max(hi - med, 1.0)), 0, 255).astype(_np.uint8))
     return rgb, th, li
 
 

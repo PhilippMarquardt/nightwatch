@@ -19,7 +19,7 @@ STRIDE=${STRIDE:-2}          # every 2nd frame (10 Hz -> 5 Hz); consecutive fram
 EPOCHS=${EPOCHS:-1}          # 6.4k frames at 5 Hz; 1 epoch is enough for LoRA
 SUB=${SUB:-600}              # same fixed-seed 600-frame subset as the zero-shot baseline (QA + robustness)
 W=${WORKERS:-12}
-GPU_MEM=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1)
+GPU_MEM=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1); GPU_MEM=${GPU_MEM:-0}
 if [ "$GPU_MEM" -gt 90000 ]; then dBS=8; dACC=2; dIBS=96; else dBS=4; dACC=4; dIBS=24; fi
 BS=${BS:-$dBS}; ACC=${ACC:-$dACC}; IBS=${IBS:-$dIBS}
 has() { [ -s "$1" ]; }

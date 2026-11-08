@@ -35,6 +35,7 @@ def score_report(preds, frames, ids, score_thr=None):
     lying_hit = lying_n = 0
     d_err, d_rel = [], []
     per_bin = defaultdict(lambda: [0, 0])
+    per_bin_obs = defaultdict(lambda: [0, 0])
     per_bin_derr = defaultdict(list)
     occ = [0, 0]
     obs = [0, 0]
@@ -67,6 +68,7 @@ def score_report(preds, frames, ids, score_thr=None):
                 occ[1] += 1
             if observable(gp):
                 obs[1] += 1
+                per_bin_obs[b][1] += 1
             if gp["pose"] == "lying":
                 lying_n += 1
             if j not in match:
@@ -74,6 +76,7 @@ def score_report(preds, frames, ids, score_thr=None):
             per_bin[b][0] += 1
             occ[0] += int(bool(gp.get("occluded")))
             obs[0] += int(observable(gp))
+            per_bin_obs[b][0] += int(observable(gp))
             q = p[match[j]]
             gt_pose = POSE3[gp["pose"]]
             if q.get("pose") is not None:
@@ -99,6 +102,9 @@ def score_report(preds, frames, ids, score_thr=None):
            "observable_frac": obs[1] / max(1, sum(len(frames[i]["persons"]) for i in ids))}
     for b, (h, n) in per_bin.items():
         out[f"recall_{b}"] = h / max(1, n)
+        out[f"obs_frac_{b}"] = per_bin_obs[b][1] / max(1, n)
+        if per_bin_obs[b][1]:
+            out[f"obs_recall_{b}"] = per_bin_obs[b][0] / per_bin_obs[b][1]
         if per_bin_derr[b]:
             out[f"dist_mae_{b}"] = float(np.mean(per_bin_derr[b]))
     return out

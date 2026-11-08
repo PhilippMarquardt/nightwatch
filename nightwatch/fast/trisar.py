@@ -157,11 +157,11 @@ def prep(x, idx_ch, cond="normal"):
         xf[:, 3:4] = 0
     elif cond == "lidar_off":
         xf[:, 4:] = 0
-    elif cond == "thermal_stretch":     # per-frame p2-p99.5 contrast stretch of the thermal channel
+    elif cond == "thermal_stretch":     # per-frame match to the lab training distribution: median -> 135, p99.5 -> 235
         t = xf[:, 3:4]
         flat = t.flatten(1)
-        lo = flat.quantile(0.02, dim=1).view(-1, 1, 1, 1); hi = flat.quantile(0.995, dim=1).view(-1, 1, 1, 1)
-        xf[:, 3:4] = ((t - lo) / (hi - lo).clamp(min=1 / 255)).clamp(0, 1)
+        med = flat.median(dim=1).values.view(-1, 1, 1, 1); hi = flat.quantile(0.995, dim=1).view(-1, 1, 1, 1)
+        xf[:, 3:4] = (135 / 255 + (t - med) * ((100 / 255) / (hi - med).clamp(min=1 / 255))).clamp(0, 1)
     xf = (xf - MEAN.to(xf.device)) / STD.to(xf.device)
     return xf[:, idx_ch]
 

@@ -37,6 +37,7 @@ g sft_fusion/pred_test_robust_metrics.json  sft_dual/pred_test_robust_metrics.js
 g fast_distill/pred_test_metrics.json       fast_gt_labeled/pred_test_metrics.json   gate_distill.json
 g fast_distill/pred_test_metrics.json       fast_selfdistill/pred_test_metrics.json  gate_distill_vs_self.json
 g t_sft_fusion_l/pred_test_metrics.json     t_sft_rgb/pred_test_metrics.json         gate_trisar.json
+g t_sft_fusion_l_cd50/pred_test_metrics.json t_sft_fusion_l/pred_test_metrics.json gate_trisar_cd50.json
 g t_sft_fusion_l_cd50/pred_test_robust_metrics.json t_sft_fusion_l/pred_test_robust_metrics.json gate_trisar_cd50_robust.json
 python -m nightwatch.report.make_report
 } >> logs/finalize.log 2>&1
