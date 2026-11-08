@@ -3,7 +3,7 @@ data/cache*/
 data/*.log
 data/index_smoke.json
 models/
-runs/
+/runs/
 logs/
 wandb/
 __pycache__/
@@ -12,7 +12,7 @@ __pycache__/
 *.tgz
 runs_fake/
 report_fake/
-report/
+/report/
 logs_local2b.txt
 data/trisar*
 data/raw/
