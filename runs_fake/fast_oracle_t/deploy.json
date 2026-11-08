@@ -1,1 +1,0 @@
-{"gpu": "NVIDIA H200", "torch_fp32_ms": 2.1, "torch_fp16_ms": 1.6, "tensorrt_fp16_ms": 0.62, "tensorrt_fp16_fps": 1612}
