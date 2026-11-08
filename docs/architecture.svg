@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" width="1200" height="640" font-family="Inter, 'Segoe UI', 'DejaVu Sans', sans-serif">
+  <style>
+    :root { --bg:#ffffff; --ink:#1d1d1f; --ink2:#5f6368; --line:#9aa0a6; --card:#f5f6f7; --slow:#3987e5; --fast:#199e70; --sens:#d95926; --mem:#9085e9; --gate:#c98500; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg:#161616; --ink:#ececec; --ink2:#a8adb3; --line:#6b7177; --card:#222324; }
+    }
+    .bg { fill: var(--bg); }
+    .card { fill: var(--card); stroke: var(--line); stroke-width: 1; }
+    .t { fill: var(--ink); font-size: 14px; font-weight: 600; }
+    .s { fill: var(--ink2); font-size: 12px; }
+    .h { fill: var(--ink2); font-size: 11px; letter-spacing: 0.12em; font-weight: 700; }
+    .a { stroke: var(--line); stroke-width: 1.6; fill: none; marker-end: url(#arr); }
+    .as { stroke: var(--slow); stroke-width: 1.8; fill: none; marker-end: url(#arrs); stroke-dasharray: 6 4; }
+    .k-sens { fill: var(--sens); } .k-slow { fill: var(--slow); } .k-fast { fill: var(--fast); } .k-mem { fill: var(--mem); } .k-gate { fill: var(--gate); }
+  </style>
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9aa0a6"/></marker>
+    <marker id="arrs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#3987e5"/></marker>
+  </defs>
+  <rect class="bg" width="1200" height="640"/>
+
+  <!-- column headers -->
+  <text class="h" x="30" y="34">SENSORS</text>
+  <text class="h" x="230" y="34">PER-SENSOR ENCODERS</text>
+  <text class="h" x="500" y="34">HEADS</text>
+  <text class="h" x="880" y="34">DECISION + GUARDRAILS</text>
+
+  <!-- sensors -->
+  <g>
+    <rect class="card" x="30" y="60" width="160" height="58" rx="10"/><rect class="k-sens" x="30" y="60" width="5" height="58" rx="2"/>
+    <text class="t" x="46" y="85">RGB camera</text><text class="s" x="46" y="104">useless in the dark</text>
+    <rect class="card" x="30" y="132" width="160" height="58" rx="10"/><rect class="k-sens" x="30" y="132" width="5" height="58" rx="2"/>
+    <text class="t" x="46" y="157">Thermal (LWIR)</text><text class="s" x="46" y="176">level-matched per frame</text>
+    <rect class="card" x="30" y="204" width="160" height="58" rx="10"/><rect class="k-sens" x="30" y="204" width="5" height="58" rx="2"/>
+    <text class="t" x="46" y="229">LiDAR</text><text class="s" x="46" y="248">z-buffered into thermal view</text>
+    <text class="s" x="30" y="290">all rendered into one</text><text class="s" x="30" y="306">640×512 thermal frame</text>
+  </g>
+
+  <!-- encoders -->
+  <g>
+    <rect class="card" x="230" y="60" width="220" height="58" rx="10"/>
+    <text class="t" x="246" y="85">Qwen3.5 ViT</text><text class="s" x="246" y="104">2×2-merged visual tokens (30×24)</text>
+    <rect class="card" x="230" y="132" width="220" height="58" rx="10"/>
+    <text class="t" x="246" y="157">DINOv3 ConvNeXt-T, 1-ch</text><text class="s" x="246" y="176">stride 16+32 features → 1152-d</text>
+    <rect class="card" x="230" y="204" width="220" height="58" rx="10"/>
+    <text class="t" x="246" y="229">DINOv3 ConvNeXt-T, 3-ch</text><text class="s" x="246" y="248">1/range, intensity, hit mask</text>
+    <path class="a" d="M190,89 H228"/><path class="a" d="M190,161 H228"/><path class="a" d="M190,233 H228"/>
+    <text class="s" x="246" y="290">zero-init projections, summed</text><text class="s" x="246" y="306">onto the visual token stream</text>
+  </g>
+
+  <!-- fusion sum -->
+  <circle cx="478" cy="161" r="14" fill="none" stroke="var(--line)" stroke-width="1.6"/>
+  <text x="478" y="166" text-anchor="middle" class="t">+</text>
+  <path class="a" d="M450,89 C468,89 478,110 478,145"/><path class="a" d="M450,161 H462"/><path class="a" d="M450,233 C468,233 478,212 478,177"/>
+
+  <!-- slow head -->
+  <rect class="card" x="510" y="92" width="320" height="140" rx="12"/><rect class="k-slow" x="510" y="92" width="6" height="140" rx="2"/>
+  <text class="t" x="530" y="120">Slow head: Qwen3.5-9B + LoRA</text>
+  <text class="s" x="530" y="142">one fused token stream → JSON report</text>
+  <text class="s" x="530" y="160">persons, posture (upright / sitting / lying), range in m</text>
+  <text class="s" x="530" y="178">camera-dropout → "nobody visible", not a guess</text>
+  <text class="s" x="530" y="196">≈120 ms / frame batched</text>
+  <text class="s" x="530" y="214">held-out lab F1 0.76 · forest 0.00 (abstains)</text>
+  <path class="a" d="M492,161 H508"/>
+
+  <!-- fast head -->
+  <rect class="card" x="510" y="300" width="320" height="120" rx="12"/><rect class="k-fast" x="510" y="300" width="6" height="120" rx="2"/>
+  <text class="t" x="530" y="328">Fast head: CenterNet, ResNet18-FPN</text>
+  <text class="s" x="530" y="350">7-ch input (RGB + T + 3 LiDAR), 12 M params</text>
+  <text class="s" x="530" y="368">boxes + posture + log-range, decode in-graph</text>
+  <text class="s" x="530" y="386">TensorRT FP16: 0.7 ms (1,370 fps)</text>
+  <text class="s" x="530" y="404">forest F1 0.31 · runs mostly on LiDAR</text>
+  <path class="a" d="M110,262 C110,330 200,372 508,372"/>
+  <text class="s" x="150" y="350">raw 7-ch frame (RGB+T+LiDAR)</text>
+
+  <!-- distillation -->
+  <path class="as" d="M670,232 V298"/>
+  <text x="682" y="262" class="s" fill="var(--slow)">distillation:</text>
+  <text x="682" y="278" class="s">slow head labels unlabeled sites</text>
+
+  <!-- router -->
+  <rect class="card" x="880" y="150" width="290" height="110" rx="12"/><rect class="k-slow" x="880" y="150" width="6" height="110" rx="2"/>
+  <text class="t" x="900" y="178">Router (per frame, outputs only)</text>
+  <text class="s" x="900" y="200">slow-head persons + non-overlapping</text>
+  <text class="s" x="900" y="216">fast detections</text>
+  <text class="s" x="900" y="240" style="font-weight:700">held-out F1 0.434 vs 0.368 best single</text>
+  <path class="a" d="M830,162 H878"/><path class="a" d="M830,360 C860,360 860,240 878,240"/>
+
+  <!-- gates -->
+  <rect class="card" x="880" y="290" width="290" height="110" rx="12"/><rect class="k-gate" x="880" y="290" width="6" height="110" rx="2"/>
+  <text class="t" x="900" y="318">Regression gates (fail-closed)</text>
+  <text class="s" x="900" y="340">held-out sites · darkest 25 % · night</text>
+  <text class="s" x="900" y="356">camera / thermal / LiDAR off · crowded</text>
+  <text class="s" x="900" y="372">same-subset comparisons only</text>
+  <text class="s" x="900" y="388">block on missing data or n mismatch</text>
+  <path class="a" d="M1025,260 V288"/>
+
+  <!-- site memory -->
+  <rect class="card" x="510" y="470" width="660" height="110" rx="12"/><rect class="k-mem" x="510" y="470" width="6" height="110" rx="2"/>
+  <text class="t" x="530" y="498">Site memory: JEPA-style latent predictor (LTDv2, 8 months of one harbour camera)</text>
+  <text class="s" x="530" y="520">predicts the next frame's frozen DINOv3 thermal tokens from recent frames + a per-site memory</text>
+  <text class="s" x="530" y="538">anomaly = surprise (peak token error, z-scored per hour and daylight)</text>
+  <text class="s" x="530" y="556">AUROC: inserted person 0.70 (pixel baseline 0.52) · crowd 0.85 (token baseline 0.67)</text>
+  <path class="a" d="M450,182 C482,182 492,215 492,300 V510 C492,520 498,525 508,525"/>
+  <text class="s" x="384" y="455">frozen thermal</text><text class="s" x="384" y="471">tokens</text>
+
+  <text class="s" x="30" y="620">Night Watch: multimodal fusion and distillation for night-time security perception. Numbers: held-out test sets, see report.</text>
+</svg>
