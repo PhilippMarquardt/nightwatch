@@ -83,8 +83,22 @@ def main():
         rt = trt.Runtime(logger)
         eng = rt.deserialize_cuda_engine(eng_bytes)
         ctx = eng.create_execution_context()
-        odt = x_in.dtype
-        outs = {"boxes": torch.empty(1, 50, 4, device="cuda", dtype=odt), "scores": torch.empty(1, 50, device="cuda", dtype=odt)}
+        tdt = {trt.DataType.FLOAT: torch.float32, trt.DataType.HALF: torch.float16, trt.DataType.INT32: torch.int32,
+               trt.DataType.INT64: torch.int64}
+        outs = {}
+        for i in range(eng.num_io_tensors):          # allocate exactly what the engine says (dtype + shape)
+            name = eng.get_tensor_name(i)
+            if eng.get_tensor_mode(name) == trt.TensorIOMode.OUTPUT:
+                outs[name] = torch.empty(tuple(eng.get_tensor_shape(name)), device="cuda",
+                                         dtype=tdt[eng.get_tensor_dtype(name)])
+        in_dt = tdt[eng.get_tensor_dtype("sensors")]
+        try:   # a real test frame, not noise, for the equivalence check
+            from nightwatch.fast.data import prep_eval
+            xr = torch.from_numpy(np.load("data/cache_fast/test.npy", mmap_mode="r")[:1].copy()).cuda()
+            x = prep_eval(xr, summ["modal"]).contiguous()
+        except Exception:
+            pass
+        x_in = x.to(in_dt).contiguous()
         ctx.set_tensor_address("sensors", x_in.data_ptr())
         for k, v in outs.items():
             ctx.set_tensor_address(k, v.data_ptr())
@@ -94,7 +108,7 @@ def main():
             ref_b, ref_s = m(x)
         ctx.execute_async_v3(stream.cuda_stream); stream.synchronize()
         res["tensorrt_max_score_diff"] = float((outs["scores"].float() - ref_s).abs().max())
-        res["engine_mb"] = len(eng_bytes) / 1e6
+        res["engine_mb"] = eng_bytes.nbytes / 1e6
     except Exception as e:
         res["tensorrt_error"] = repr(e)[:300]
         try:
