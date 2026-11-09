@@ -60,16 +60,22 @@ What the runs show:
 | zero-shot, thermal as a 2nd image | 0.696 | 0.64–0.78 | 0.20 | – |
 | **9B fine-tuned, thermal fused onto its tokens** | **0.894** | 0.87–0.93 | **0.80** | **0.902** |
 | 12M fast head, 7 labelled sites (3 seeds) | 0.82 (0.80–0.83) | | | 0.77 (0.75–0.79) |
-| 12M student of the 9B, consensus-filtered labels on 11 unlabeled sites (preliminary, 1 seed) | **0.866** | 0.83–0.89 | | 0.852 |
+| 12M fast head, self-training on the 11 unlabeled sites (control) | 0.862* | | | |
+| 12M student of the 9B, consensus-filtered labels on 11 unlabeled sites (1 seed) | 0.866 | 0.83–0.89 | | 0.852 |
 | 12M fast head, human labels on all 18 sites (oracle) | 0.857 | 0.83–0.88 | | 0.839 |
 
 - Fusion lifts the 9B model on all 7 sites (+0.055 over zero-shot, CI +0.035 to +0.076). It still finds people with the
   camera black (0.80). Thermal as a plain second image *hurts* on all 7 sites.
-- The 9B teacher's labels on the 11 unlabeled sites are worse than its test score (F1 0.82 vs 0.89 against the withheld
-  labels). Two bright, tree-lined sites fail with hallucinated lamps and foliage. Keeping only the boxes the
-  labelled-only fast head confirms raises label precision 0.76 → 0.80. That student matches the oracle trained on human
-  labels for the same sites. Seeds 1–2 and the self-training and compute-matched controls are still running; see
-  `docs/LAB_NOTES.md`.
+- **Distillation from the 9B did not beat self-training on F1.** Pseudo-labelling the 11 unlabeled sites closes the gap
+  to the human-label oracle, but the 12M head's own labels do it equally well (0.862 vs 0.862 for the consensus-filtered
+  9B labels, Δ 0.000 [−0.014, +0.017]). The pre-registered self-training control caught this. The teacher's labels do
+  transfer ranking quality: AP50 0.912 vs 0.893 for self-training and 0.877 labelled-only. Its labels on the unlabeled
+  sites (F1 0.82 vs withheld GT, with hallucinated lamps and foliage at two bright sites) are no better than the small
+  head's own confident labels on easy LLVIP pedestrians.
+- **Fusion is spatial, and misalignment is dangerous.** With thermal taken from a different frame, the 9B drops to 0.53
+  (0.88 with thermal simply off). A sync or calibration fault is worse than a dead thermal camera.
+
+\* full 3,463-frame test set; the other rows use the 1,500-frame subset.
 - Escalation works when the slow head is competent everywhere. Sending the 20 % most uncertain frames to the 9B
   recovers 61 % of the fast→slow gap (random: 28 %). On TriSAR, where the 9B is blind at night, the same rule loses to
   random. Routing must know which head to trust for the scene.
