@@ -6,7 +6,10 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 MODE=${MODE:?set MODE}; SEED=${SEED:-0}
-TAG=_vl$( [ "$SEED" = 0 ] && echo "" || echo "_s$SEED" ); export NW_VISION_LORA=1
+# VIS_LR_MULT < 1 gives the vision-encoder LoRA its own, lower learning rate (run tag _vl<mult>, e.g. _vl0.2).
+VIS_LR_MULT=${VIS_LR_MULT:-1}; export NW_VIS_LR_MULT=$VIS_LR_MULT
+VTAG=$( [ "$VIS_LR_MULT" = 1 ] && echo "_vl" || echo "_vl$VIS_LR_MULT" )
+TAG=$VTAG$( [ "$SEED" = 0 ] && echo "" || echo "_s$SEED" ); export NW_VISION_LORA=1
 OUT=runs/t_sft_${MODE}${TAG}
 M=Qwen/Qwen3.5-9B; FUSED=data/trisar_fused
 [ -f STOP_$MODE ] && exit 0

@@ -86,7 +86,17 @@ def main():
                     collate_fn=partial(sft_collate, pad_id=proc.tokenizer.pad_token_id), drop_last=True,
                     persistent_workers=a.workers > 0, prefetch_factor=4 if a.workers else None)
 
-    groups = [{"params": [p for p in model.parameters() if p.requires_grad], "lr": a.lr, "name": "lora"}]
+    # NW_VIS_LR_MULT scales the learning rate of LoRA weights inside the vision encoder (NW_VISION_LORA runs).
+    # Default 1.0 = one group, identical to all earlier runs.
+    vis_mult = float(os.environ.get("NW_VIS_LR_MULT", "1.0"))
+    trainable = [(n, p) for n, p in model.named_parameters() if p.requires_grad]
+    if vis_mult != 1.0:
+        vis = [p for n, p in trainable if ".visual." in n]
+        groups = [{"params": [p for n, p in trainable if ".visual." not in n], "lr": a.lr, "name": "lora"},
+                  {"params": vis, "lr": a.lr * vis_mult, "name": "lora_vis"}]
+        print(f"vision LoRA lr x{vis_mult}: {sum(p.numel() for p in vis) / 1e6:.1f}M params", flush=True)
+    else:
+        groups = [{"params": [p for n, p in trainable], "lr": a.lr, "name": "lora"}]
     if fusion is not None:
         enc = list(fusion.encoder.parameters())
         gates = [fusion.main.gate] + [p.gate for p in fusion.deep]
