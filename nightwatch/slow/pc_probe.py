@@ -80,24 +80,33 @@ def fit_eval(Xtr, ytr, tests, epochs=300, wd=1e-3):
     return out
 
 
+def _load(f):
+    z = np.load(os.path.join(PC, f"{f['id']}.npz"))
+    u = np.concatenate([z["feat"].astype(np.float32), np.log1p(z["count"].astype(np.float32))[:, None]], 1)
+    return u, range_stats(f["id"]), range_pixels(f["id"]), cell_labels(f["persons"]), z["count"] > 0
+
+
 def main(max_train_frames=2500):
-    frames = [f for f in json.load(open(os.path.join(FUSED, "frames.json")))
-              if os.path.exists(os.path.join(PC, f"{f['id']}.npz"))]
+    allf = json.load(open(os.path.join(FUSED, "frames.json")))
+    frames = [f for f in allf if os.path.exists(os.path.join(PC, f"{f['id']}.npz"))]
+    assert len(frames) == len(allf), f"feature cache incomplete: {len(frames)}/{len(allf)}"
     rng = np.random.default_rng(0)
     tr = [f for f in frames if f["split"] == "train"]
     tr = [tr[i] for i in sorted(rng.choice(len(tr), min(max_train_frames, len(tr)), replace=False))]
-    te = {"lab": [f for f in frames if f["split"] == "test" and f["location"] == "lab"],
-          "forest": [f for f in frames if f["split"] == "test" and f["location"] == "forest"]}
+    # Gate on the lab VALIDATION sequences (review Astra-pc: deciding on test AP would make the test set development data).
+    # Test lab / forest are computed and saved but reported only as information, after the decision.
+    te = {"val_lab": [f for f in frames if f["split"] == "val" and f["location"] == "lab"],
+          "test_lab": [f for f in frames if f["split"] == "test" and f["location"] == "lab"],
+          "test_forest": [f for f in frames if f["split"] == "test" and f["location"] == "forest"]}
     print("frames with features:", len(frames), "train used", len(tr), {k: len(v) for k, v in te.items()}, flush=True)
 
+    from multiprocessing import Pool
+
     def build(fs):
-        U, B, P, Y, H = [], [], [], [], []
-        for f in fs:
-            z = np.load(os.path.join(PC, f"{f['id']}.npz"))
-            U.append(np.concatenate([z["feat"].astype(np.float32), np.log1p(z["count"].astype(np.float32))[:, None]], 1))
-            B.append(range_stats(f["id"])); P.append(range_pixels(f["id"])); Y.append(cell_labels(f["persons"]))
-            H.append(z["count"] > 0)
-        return np.concatenate(U), np.concatenate(B), np.concatenate(P), np.concatenate(Y), np.concatenate(H)
+        with Pool(48) as pool:
+            rows = pool.map(_load, fs, chunksize=16)
+        print("  loaded", len(fs), "frames", flush=True)
+        return tuple(np.concatenate([r[i] for r in rows]) for i in range(5))
 
     Utr, Btr, Ptr, ytr, _ = build(tr)
     tests = {k: build(v) for k, v in te.items()}
@@ -112,24 +121,30 @@ def main(max_train_frames=2500):
     Ptr_p = pca(Ptr); del Pm, sub
     arms = {"utonia": (Utr, {k: t[0] for k, t in tests.items()}),
             "range_image_stats": (Btr, {k: t[1] for k, t in tests.items()}),
-            f"range_image_pixels_pca{q}": (Ptr_p, {k: pca(t[2]) for k, t in tests.items()})}
+            f"range_image_pixels_pca{q}": (Ptr_p, {k: pca(t[2]) for k, t in tests.items()}),
+            # control (review Astra-pc): point count alone, i.e. "is there a LiDAR return here and how dense"
+            "point_count_only": (Utr[:, -1:], {k: t[0][:, -1:] for k, t in tests.items()})}
     res = {"all_cells": {}, "cells_with_return": {}}
     for name, (Xtr, Xte) in arms.items():
         res["all_cells"][name] = fit_eval(Xtr, ytr, {k: (Xte[k], tests[k][3]) for k in tests})
         res["cells_with_return"][name] = fit_eval(Xtr, ytr, {k: (Xte[k][tests[k][4]], tests[k][3][tests[k][4]]) for k in tests})
-    for scope, rr in res.items():
-        print(f"--- {scope}")
-        for name, r in rr.items():
-            print(f"{name:26s} " + "  ".join(f"{k}: AP {v['ap']:.3f} (pos {v['pos_rate']:.3f}, n {v['n_cells']})" for k, v in r.items()))
-    best_base = max(v["forest"]["ap"] for n, v in res["all_cells"].items() if n != "utonia")
-    gate_pre = res["all_cells"]["utonia"]["forest"]["ap"] >= res["all_cells"]["range_image_stats"]["forest"]["ap"] + 0.05
-    gate_strict = res["all_cells"]["utonia"]["forest"]["ap"] >= best_base + 0.05
-    print("V5 GATE pre-registered (vs range-image stats + 0.05, forest):", "PASS" if gate_pre else "FAIL")
-    print("V5 strict (vs best baseline incl. matched-capacity pixels + 0.05):", "PASS" if gate_strict else "FAIL")
-    gate = gate_pre
     os.makedirs("runs/pc_probe", exist_ok=True)
-    json.dump({"results": res, "gate_pass": bool(gate_pre), "gate_strict": bool(gate_strict), "train_frames": len(tr)},
-              open("runs/pc_probe/probe.json", "w"), indent=1)
+    G = "val_lab"
+    best_base = max(v[G]["ap"] for n, v in res["all_cells"].items() if n != "utonia")
+    gate_pre = res["all_cells"]["utonia"][G]["ap"] >= res["all_cells"]["range_image_stats"][G]["ap"] + 0.05
+    gate_strict = res["all_cells"]["utonia"][G]["ap"] >= best_base + 0.05
+    print("--- DECISION on val_lab (all cells)")
+    for name, r in res["all_cells"].items():
+        print(f"{name:26s} val_lab AP {r[G]['ap']:.3f} (pos {r[G]['pos_rate']:.3f}, n {r[G]['n_cells']})")
+    print("V5 GATE (Utonia val-lab AP >= range-image stats + 0.05):", "PASS" if gate_pre else "FAIL")
+    print("V5 strict (vs best baseline incl. pixels and point count + 0.05):", "PASS" if gate_strict else "FAIL")
+    json.dump({"results": res, "gate_set": G, "gate_pass": bool(gate_pre), "gate_strict": bool(gate_strict),
+               "train_frames": len(tr)}, open("runs/pc_probe/probe.json", "w"), indent=1)
+    print("--- INFORMATION ONLY (test sets; not used for the decision)")
+    for scope, rr in res.items():
+        print(f"[{scope}]")
+        for name, r in rr.items():
+            print(f"{name:26s} " + "  ".join(f"{k}: AP {v['ap']:.3f} (pos {v['pos_rate']:.3f})" for k, v in r.items() if k != G))
 
     # V4: PCA overlay for one forest and one lab test frame with people
     import matplotlib
@@ -139,7 +154,7 @@ def main(max_train_frames=2500):
     mu = Ufit.mean(0)
     _, _, V = np.linalg.svd(Ufit[rng.choice(len(Ufit), min(20000, len(Ufit)), replace=False)] - mu, full_matrices=False)
     fig, axes = plt.subplots(2, 3, figsize=(15, 8))
-    for row, key in enumerate(["forest", "lab"]):
+    for row, key in enumerate(["test_forest", "test_lab"]):
         f = max(te[key], key=lambda f: len(f["persons"]))
         z = np.load(os.path.join(PC, f"{f['id']}.npz"))
         p = (z["feat"].astype(np.float32) - mu) @ V[:3].T
