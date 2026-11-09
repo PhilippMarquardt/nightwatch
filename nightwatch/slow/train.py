@@ -115,7 +115,9 @@ def main():
     if rank == 0:
         n_train = sum(p.numel() for p in train_params)
         print(f"mode={a.mode} samples={len(ds)} steps={total} trainable={n_train/1e6:.1f}M", flush=True)
-        log = RunLogger(a.out, vars(a), use_wandb=(True if a.wandb else None), project="nightwatch")
+        cfg = {**vars(a), "vision_lora": bool(os.environ.get("NW_VISION_LORA")), "vis_lr_mult": vis_mult,
+               "clip_mode": "per_group" if vis_mult != 1.0 else "global", "multi_drop": os.environ.get("NW_MULTI_DROP", "0.3")}
+        log = RunLogger(a.out, cfg, use_wandb=(True if a.wandb else None), project="nightwatch")
 
     if ddp:
         # LoRA params live in `model`; fusion params are synced manually below (all-reduce grads)
@@ -149,6 +151,7 @@ def main():
                         dist.all_reduce(p.grad, op=dist.ReduceOp.AVG)
             if vis_mult != 1.0:   # clip LM and vision LoRA separately, so large ViT gradients do not shrink LM updates
                 gns = [torch.nn.utils.clip_grad_norm_(g["params"], 1.0) for g in groups]
+                gn_groups = {f"grad_norm_{g['name']}": float(x) for g, x in zip(groups, gns)}
                 gn = torch.sqrt(sum(x.float() ** 2 for x in gns))
             else:
                 gn = torch.nn.utils.clip_grad_norm_(train_params, 1.0)
@@ -159,7 +162,7 @@ def main():
             opt.zero_grad(set_to_none=True)
             step += 1
             if rank == 0 and (step % 5 == 0 or step == 1):
-                rec = {"step": step, "loss": loss.item() * a.grad_accum, "grad_norm": float(gn),
+                rec = {"step": step, "loss": loss.item() * a.grad_accum, "grad_norm": float(gn), **(gn_groups if vis_mult != 1.0 else {}),
                        "lr": opt.param_groups[0]["lr"], "elapsed_s": time.time() - t0,
                        "samples_per_s": step * a.grad_accum * a.bs * (dist.get_world_size() if ddp else 1) / (time.time() - t0)}
                 if fusion is not None:

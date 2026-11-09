@@ -15,14 +15,19 @@ Paths in this file are relative to the repo root (figures are in `docs/media/`).
 | VLM fine-tuned, RGB + thermal + LiDAR, **no camera-dropout** (2 seeds) | **0.26 / 0.25** | **0.17** | 0.00 | **0.82 / 0.80** |
 | VLM fine-tuned, RGB + thermal + LiDAR, 50 % camera-dropout | 0.24 | 0.16 | 0.00 | 0.76 |
 | VLM fine-tuned, thermal as its own image (no camera, no LiDAR) | 0.41 | 0.38 | 0.33 | 0.82 |
-| VLM fine-tuned, camera + thermal as two images (1 seed) | 0.48 | 0.45 | 0.39 | 0.86 |
-| **VLM fine-tuned, camera + thermal + LiDAR as three images** (2 seeds) | **0.52 (0.51–0.53)** | **0.49** | **0.44 (0.43–0.44)** | **0.84** |
+| VLM fine-tuned, camera + thermal as two images (3 seeds) | 0.48 (0.48–0.48) | 0.45 (0.45–0.45) | 0.40 (0.39–0.40) | 0.85 (0.82–0.86) |
+| **VLM fine-tuned, camera + thermal + LiDAR as three images** (3 seeds) | **0.52 (0.51–0.53)** | **0.49 (0.48–0.50)** | **0.44 (0.43–0.44)** | 0.84 (0.83–0.84) |
 | fast head, 12M (mean of 3 seeds, range) | 0.36 (0.30–0.40) | 0.33 (0.27–0.38) | **0.30 (0.24–0.36)** | 0.56 (0.55–0.57) |
 | combined: VLM (camera-dropout) + non-overlapping fast detections (3 seeds) | 0.42 (0.35–0.46) | 0.37 (0.31–0.42) | 0.30 (0.24–0.35) | 0.76 |
 | fast head + per-frame thermal normalisation (3 seeds) | 0.42 (0.37–0.45) | 0.39 (0.35–0.43) | **0.37 (0.31–0.42)** | 0.56 (0.56–0.57) |
 | combined: VLM (camera-dropout) + normalised fast head (3 seeds) | 0.47 (0.44–0.51) | 0.43 (0.39–0.47) | 0.37 (0.31–0.42) | 0.76 |
 | combined: RGB-only VLM + normalised fast head (3 seeds) | 0.48 (0.44–0.51) | 0.44 (0.39–0.48) | 0.37 (0.31–0.42) | 0.78 |
 | **combined: fused VLM (no dropout) + normalised fast head** (3 seeds) | **0.49 (0.45–0.52)** | **0.45 (0.40–0.49)** | **0.37 (0.31–0.42)** | **0.81** |
+
+The three-image model beats the two-image model on every seed (+0.03 to +0.05 F1, paired block bootstrap, intervals
+above zero), and keeps that lead with the LiDAR image blacked out at test time (+0.03 to +0.04; on seed 1, LiDAR off
+scores slightly *higher* than normal, 0.512 vs 0.508). The gain is a training-time effect of the third image, not LiDAR
+use.
 
 What the runs show:
 
