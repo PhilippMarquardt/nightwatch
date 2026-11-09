@@ -17,8 +17,7 @@ LADDER = [  # (label, [runs...])
     ("camera + thermal + LiDAR\nside branch", ["t_sft_fusion_l_cd0", "t_sft_fusion_l_cd0_s1"]),
     ("thermal\nas image", ["t_sft_thermal_i"]),
     ("camera + thermal\nas images", ["t_sft_rgbt_i", "t_sft_rgbt_i_s1", "t_sft_rgbt_i_s2"]),
-    ("camera + thermal + LiDAR\nas images", ["t_sft_tri", "t_sft_tri_s1"]),
-    ("… + vision-encoder LoRA", ["t_sft_tri_vl"]),
+    ("camera + thermal + LiDAR\nas images", ["t_sft_tri", "t_sft_tri_s1", "t_sft_tri_s2"]),
 ]
 
 
