@@ -17,21 +17,29 @@ posture and range. This window was chosen as the forest's best; the forest's ove
 | system | all | night | unseen forest | held-out lab |
 |---|---|---|---|---|
 | VLM zero-shot, RGB (600-frame subset) | 0.07 | – | – | – |
+| VLM fine-tuned, RGB only | 0.25 | 0.16 | 0.00 | 0.78 |
 | VLM fine-tuned, RGB + thermal + LiDAR | 0.17 | 0.11 | 0.00 | **0.79** |
 | … + camera-dropout 0.5 | 0.24 | 0.16 | 0.00 | 0.76 |
 | fast head, 12M (mean of 3 seeds, range) | 0.36 (0.30–0.40) | 0.33 (0.27–0.38) | **0.30 (0.24–0.36)** | 0.56 (0.55–0.57) |
+| combined: RGB-only VLM + non-overlapping fast detections (seed 0) | 0.44 | 0.39 | 0.31 | 0.78 |
 | combined: VLM (camera-dropout) + non-overlapping fast detections (3 seeds) | 0.42 (0.35–0.46) | 0.37 (0.31–0.42) | 0.30 (0.24–0.35) | 0.76 |
 | fast head + per-frame thermal normalisation (3 seeds) | 0.42 (0.37–0.45) | 0.39 (0.35–0.43) | **0.37 (0.31–0.42)** | 0.56 (0.56–0.57) |
 | **combined: VLM (camera-dropout) + normalised fast head** (3 seeds) | **0.47 (0.44–0.51)** | **0.43 (0.39–0.47)** | 0.37 (0.31–0.42) | 0.76 |
 
 What the runs show:
 
-1. **Combining the heads wins, but only with a VLM that abstains.** The combined output gains +0.066, +0.065 and +0.054
-   F1 over the fast head alone, one gain per fast-head seed. The absolute level varies a lot by seed (fast head 0.30–0.40,
-   and validation F1 does not predict which seed generalises), but the gain does not. The same combination with the VLM trained without camera-dropout
-   *loses* to the fast head (0.32 vs 0.37), because that VLM invents people in the dark.
-2. **Camera-dropout turned hallucination into abstention.** On 2,119 forest frames the earlier VLM reported 3,373 people,
-   nearly all wrong. The camera-dropout VLM answers "nobody" on 2,099 of them. Precision went 0.20 → 0.75.
+1. **Combining the heads wins, but only with a VLM that abstains.** The combined output gains +0.054 to +0.066 F1 over
+   the fast head alone, on every fast-head seed. The fast head's absolute level varies a lot by seed (0.30–0.40), and
+   validation F1 does not predict which seed generalises, but the gain does not vary. With a VLM that invents people in
+   the dark, the same combination *loses* to the fast head (0.32 vs 0.37).
+2. **Adding unused sensors made the VLM hallucinate.** On 2,119 forest frames (four unseen night sequences):
+   - The RGB-only VLM reports 6 people. The camera is black, so it says nobody.
+   - The VLM with thermal and LiDAR added as side branches reports **3,373**, nearly all wrong. Those branches carry no
+     detection signal on lab frames (point 3), but their out-of-distribution forest features push the language model
+     into reporting people.
+   - Camera-dropout training suppresses this (39 reports, precision 0.20 → 0.75).
+   - Lesson for a fused stack: every added sensor is also an out-of-distribution input, and it has to earn its place in
+     ablations.
 3. **The TriSAR VLMs never learned to use thermal or LiDAR.**
    - Switching either sensor off, or feeding both from another frame, changes held-out-lab F1 by less than 0.03.
    - With the camera off, the VLM emits the same memorised box on every frame.
