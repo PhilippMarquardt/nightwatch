@@ -50,11 +50,32 @@ What the runs show:
 ![Combined vs single heads](docs/media/fig_trisar_router.png)
 ![Accuracy vs compute](docs/media/fig_trisar_pareto.png)
 
-LLVIP (RGB + thermal street cameras, 7 held-out sites) covers distillation: the fused VLM labels 8,164 frames from 11
-unlabeled sites, the fast head learns from them, and self-training and compute-matched controls check the result. Those
-results land with the overnight run; see `docs/LAB_NOTES.md`. Site memory (a JEPA-style latent predictor on LTDv2, one
-harbour camera over 8 months) detects inserted persons at AUROC 0.70 (pixel baseline 0.52) and crowds at 0.85 (token
-baseline 0.67).
+## LLVIP: fusion and distillation (RGB + thermal street cameras, 1,500 frames from 7 unseen sites)
+
+95 % intervals come from resampling whole sites, not frames.
+
+| model | F1 | 95 % site CI | camera off | darkest 25 % |
+|---|---|---|---|---|
+| Qwen3.5-9B zero-shot, RGB | 0.839 | 0.80–0.88 | 0.00 | 0.837 |
+| zero-shot, thermal as a 2nd image | 0.696 | 0.64–0.78 | 0.20 | – |
+| **9B fine-tuned, thermal fused onto its tokens** | **0.894** | 0.87–0.93 | **0.80** | **0.902** |
+| 12M fast head, 7 labelled sites (3 seeds) | 0.82 (0.80–0.83) | | | 0.78 |
+| 12M student of the 9B, consensus-filtered labels on 11 unlabeled sites (preliminary, 1 seed) | **0.866** | 0.83–0.89 | | 0.850 |
+| 12M fast head, human labels on all 18 sites (oracle) | 0.857 | 0.83–0.88 | | 0.838 |
+
+- Fusion lifts the 9B model on all 7 sites (+0.055 over zero-shot, CI +0.035 to +0.076). It still finds people with the
+  camera black (0.80). Thermal as a plain second image *hurts* on all 7 sites.
+- The 9B teacher's labels on the 11 unlabeled sites are worse than its test score (F1 0.82 vs 0.89 against the withheld
+  labels). Two bright, tree-lined sites fail with hallucinated lamps and foliage. Keeping only the boxes the
+  labelled-only fast head confirms raises label precision 0.76 → 0.80. That student matches the oracle trained on human
+  labels for the same sites. Seeds 1–2 and the self-training and compute-matched controls are still running; see
+  `docs/LAB_NOTES.md`.
+- Escalation works when the slow head is competent everywhere. Sending the 20 % most uncertain frames to the 9B
+  recovers 61 % of the fast→slow gap (random: 28 %). On TriSAR, where the 9B is blind at night, the same rule loses to
+  random. Routing must know which head to trust for the scene.
+
+Site memory: a JEPA-style latent predictor on LTDv2 (one harbour camera over 8 months) detects inserted persons at AUROC
+0.70 (pixel baseline 0.52) and crowds at 0.85 (token baseline 0.67).
 
 Engineering notes:
 - Every comparison is same-subset, and regression gates fail closed.
