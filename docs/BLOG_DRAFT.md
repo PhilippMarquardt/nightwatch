@@ -95,7 +95,7 @@ Two more experiments pinned down why the VLM fails in the forest:
 - **With the camera off, the camera-dropout VLM emits the same box on all 600 test frames.** That is a memorised prior, not perception.
 - **Matching the thermal levels to the training distribution does nothing for it** (forest F1 stays 0.00), while the same trick helps the fast head.
 
-Thermal and LiDAR added onto the visual tokens modulate the camera path; they cannot replace it. A system that has to work with a dead camera should route thermal into the image slot itself.
+On TriSAR, the VLM's person evidence comes through the camera path. That is not a limit of the fusion design. On LLVIP, the same side-branch fusion keeps F1 0.80 with the camera completely off (0.77 on the darkest quarter of frames), so thermal alone carries localisation there. The differences on TriSAR are training budget (one epoch on 6k frames vs two on 3.4k), a harder output (posture and range per person), and a thermal camera whose forest images look nothing like the lab. That makes TriSAR the dataset that needs more data, not a different architecture.
 
 The fast head, on the other hand, runs on LiDAR. Switching LiDAR off drops it from 0.37 to 0.22, and switching the camera off changes nothing.
 

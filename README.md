@@ -30,9 +30,11 @@ What the runs show:
    *loses* to the fast head (0.32 vs 0.37), because that VLM invents people in the dark.
 2. **Camera-dropout turned hallucination into abstention.** On 2,119 forest frames the earlier VLM reported 3,373 people,
    nearly all wrong. The camera-dropout VLM answers "nobody" on 2,099 of them. Precision went 0.20 → 0.75.
-3. **The VLM's evidence still comes through the camera.** With the camera off, the camera-dropout VLM emits the same
-   memorised box on all 600 test frames. Thermal level-matching does not change its forest F1 (0.00). Thermal and LiDAR
-   added as a side branch onto the visual tokens modulate the camera path but cannot replace it.
+3. **On TriSAR, the VLM's evidence still comes through the camera.** With the camera off, the camera-dropout VLM emits
+   the same memorised box on all 600 test frames, and thermal level-matching does not change its forest F1 (0.00). The
+   fusion design itself can carry localisation: on LLVIP, the same side-branch fusion keeps **F1 0.80 with the camera
+   off**. The TriSAR failure is specific to that setup (one epoch on 6k frames, a harder report task, and a large thermal
+   domain gap), not a limit of the architecture.
 4. **The fast head runs on LiDAR.** LiDAR off: 0.37 → 0.22. Camera off: no change. Thermal off: slightly better
    off-domain, because raw thermal shifts between sites.
 5. **Escalating the VLM only on uncertain frames did not beat random escalation.** Fast-head doubt sits in the forest,
