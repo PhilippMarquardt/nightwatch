@@ -81,9 +81,9 @@ Two fusion designs were compared for the slow head:
 - **Fail-closed regression gates** (`nightwatch/eval/gate.py`). A new model ships only if it is no worse on any
   slice: per site, darkest 25 %, crowded, camera dead, thermal dead.
 - **Pre-registration.** The follow-up experiments had their success criteria and primary contrast written down
-  before training ([PLAN_SITE_ADAPT.md](docs/PLAN_SITE_ADAPT.md)). Anything decided after seeing results is labelled post hoc.
-- **Independent reviews.** An AI reviewer audited progress every 45 minutes ([docs/reviews/](docs/reviews/)); its
-  findings and my fixes are logged.
+  before training. Anything decided after seeing results is labelled post hoc.
+- **Independent reviews.** An AI reviewer audited progress every 45 minutes; every finding was fixed, deferred or
+  rejected with a reason.
 
 Metric: person F1 at IoU 0.5 unless stated.
 
