@@ -61,15 +61,26 @@ What the runs show:
 |---|---|---|---|---|
 | Qwen3.5-9B zero-shot, RGB | 0.839 | 0.80–0.88 | 0.00 | 0.832 |
 | zero-shot, thermal as a 2nd image | 0.696 | 0.64–0.78 | 0.20 | – |
+| 9B fine-tuned, RGB only (same recipe) | 0.882 | 0.83–0.92 | 0.00 | 0.820 |
 | **9B fine-tuned, thermal fused onto its tokens** | **0.894** | 0.87–0.93 | **0.80** | **0.902** |
+| **brightness router: fused head on dark frames, RGB-only head on bright ones** | **0.910** | 0.89–0.94 | – | 0.902 |
 | 12M fast head, 7 labelled sites (3 seeds) | 0.82 (0.80–0.83) | | 0.83 (s0) | 0.77 (0.75–0.79) |
 | … same, trained for as many steps as the pseudo-label students | 0.84* | | 0.83* | |
 | 12M fast head, self-training on the 11 unlabeled sites (control) | 0.864 | 0.82–0.89 | 0.85* | 0.841 |
 | 12M student of the 9B, consensus-filtered labels on 11 unlabeled sites (seeds 0 / 1) | 0.866 / 0.834 | 0.83–0.89 (s0) | 0.85* (s0) | 0.852 (s0) |
 | 12M fast head, human labels on all 18 sites (oracle) | 0.857 | 0.83–0.88 | 0.84* | 0.839 |
 
-- Fusion lifts the 9B model on all 7 sites (+0.055 over zero-shot, CI +0.035 to +0.076). It still finds people with the
-  camera black (0.80). Thermal as a plain second image *hurts* on all 7 sites.
+- **Most of the gain over zero-shot is fine-tuning** (RGB-only: +0.043). Fusion adds +0.012 overall [−0.022, +0.065],
+  which is not significant. But the gain tracks darkness: +0.13 on the darkest site, +0.08 on the darkest quarter of
+  frames, and −0.03 on the two brightest sites. With the camera black, the fused head keeps 0.80 and the RGB-only head
+  gets 0.
+- **The regression gate blocked the fused head** for those two bright-site regressions. A brightness router fixes it:
+  - it sends dark frames to the fused head and bright frames to the RGB-only head, with the threshold set at the
+    training-split median and no test data used
+  - it reaches 0.910, +0.028 [+0.004, +0.072] over RGB-only
+  - it passes the gate with no slice regressing
+  - both heads share one base model, so routing is an adapter swap
+- Thermal as a plain second image *hurts* zero-shot on all 7 sites.
 - **Distillation from the 9B did not beat self-training on F1.** Pseudo-labelling the 11 unlabeled sites closes the gap
   to the human-label oracle, but the 12M head's own labels do it equally well (0.864 vs 0.866 for the consensus-filtered
   9B labels, Δ +0.002 [−0.010, +0.019], same frames), and a second seed of the consensus student falls back to 0.83. The
