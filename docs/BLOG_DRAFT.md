@@ -67,6 +67,8 @@ I expected the fused model to win. It does not, on average. The **thermal-only**
 
 What fusion does buy is the **worst case**. The fused model is the only one that keeps working when either sensor dies: 0.80 with the camera dead, 0.88 with the thermal camera dead. Both single-sensor models drop to 0.00 when their own sensor fails. For a security robot, a dirty lens or a failed thermal core is a when, not an if. So the deployable design is to run the strongest healthy single-sensor head and fall back to the fused head on a sensor fault.
 
+![Average vs worst case](/nightwatch/fig_llvip_worst_case.png)
+
 Two details made this concrete:
 - **The fusion gain tracks darkness.** Against RGB-only, it is +0.13 on the darkest site and about −0.035 on the two brightest. The gate blocked the fused head for those two bright sites. A router that sends dark frames to the fused head (threshold: the median brightness of the *training* frames) gets 0.910 and passes the gate. I designed it after seeing the per-site pattern, so I count it as exploratory.
 - **The model uses thermal spatially.** Feed it thermal from a *different* frame and it drops to 0.53, far below simply switching thermal off (0.88). A misaligned thermal camera is more dangerous than a dead one, so a production stack needs a cross-sensor consistency check.
@@ -115,7 +117,7 @@ This is where it got interesting. Person F1 on 2,751 held-out frames:
 </table>
 </div>
 
-In the black forest (2,119 frames), the RGB-only VLM reports 6 people: it sees nothing and says so. The VLM with thermal and LiDAR side branches reports **3,373**, nearly all wrong. Two things differ between those runs. The fused one has the extra branches, and it also trained with 20 % camera-dropout that kept the lab people as targets on black frames. A fused run without camera-dropout is training to separate the two. Retraining with 50 % camera-dropout brought it down to 39 reports, so precision went from 0.20 to 0.75.
+In the black forest (2,119 frames), the RGB-only VLM reports 6 people: it sees nothing and says so. The VLM with thermal and LiDAR side branches reports **3,373**, nearly all wrong. Two things differ between those runs. The fused one has the extra branches, and it also trained with 20 % camera-dropout that kept the lab people as targets on black frames. A fused run without camera-dropout is training to separate the two. Retraining with 50 % camera-dropout brought it down to 39 reports, only 1 of them correct. Precision over the whole test set went from 0.20 to 0.75.
 
 The TriSAR VLMs never learned to use thermal or LiDAR. Switching either off, or feeding both from another frame, changes held-out-lab F1 by less than 0.03; with the camera off, the model emits the same memorised box on every frame. On LLVIP the same design does use thermal (0.80 with the camera off), so this is a training problem, not an architecture limit: one epoch on 6k frames, two new encoders at once, and a camera that was already enough on the lab training frames.
 

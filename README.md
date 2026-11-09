@@ -35,7 +35,7 @@ What the runs show:
 2. **The fused VLM hallucinated where the RGB-only VLM abstained.** On 2,119 forest frames (four unseen night sequences):
    - The RGB-only VLM reports 6 people. The camera is black, so it says nobody.
    - The VLM with thermal and LiDAR side branches reports **3,373**, nearly all wrong.
-   - With 50 % camera-dropout it reports 39 (precision 0.20 → 0.75).
+   - With 50 % camera-dropout it reports 39, of which 1 is correct (precision over all test frames 0.20 → 0.75).
    - Two things differ between the first two runs. The fused run has the side branches, and it also trained with 20 %
      camera-dropout that kept the lab people as targets on black frames, which can teach "black camera ⇒ report
      people". A fused run without camera-dropout separates the two causes; it is training now.
@@ -88,6 +88,9 @@ What the runs show:
   must keep working through a dirty lens or a failed thermal core, that redundancy is the reason to fuse. The
   operational design is to run the strongest healthy single-sensor head and fall back to the fused head on a sensor
   fault.
+
+  ![Average vs worst case](docs/media/fig_llvip_worst_case.png)
+
 - **Most of the gain over zero-shot is fine-tuning** (RGB-only: +0.043). Against RGB-only, fusion adds +0.012 overall
   [−0.022, +0.065], which is not significant. But the gain tracks darkness: +0.13 on the darkest site, +0.08 on the darkest quarter of
   frames, and −0.03 on the two brightest sites. With the camera black, the fused head keeps 0.80 and the RGB-only head

@@ -395,7 +395,7 @@ def main():
         for g in gates:
             v = jload(g) or {}
             md.append(f"| {os.path.basename(g)[:-5]} | {v.get('verdict', '?')} |")
-    for e in ["fig_llvip_sites", "fig_llvip_fusion_vs_lum", "fig_llvip_teacher_sites", "fig_llvip_thr_sweep", "fig_trisar_thr_sweep"]:
+    for e in ["fig_llvip_sites", "fig_llvip_worst_case", "fig_llvip_fusion_vs_lum", "fig_llvip_teacher_sites", "fig_llvip_thr_sweep", "fig_trisar_thr_sweep"]:
         if os.path.exists(f"{OUT}/{e}.png"):
             md += ["", f"![{e}]({e}.png)"]
             figs.setdefault(e, f"{e}.png")

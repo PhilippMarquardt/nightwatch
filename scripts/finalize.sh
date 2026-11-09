@@ -10,7 +10,7 @@ STAGES=none bash scripts/run_slow.sh       # re-score LLVIP slow runs
 STAGES=none bash scripts/run_trisar.sh     # re-score TriSAR runs (finer range bins, observability, false alarms)
 
 # LLVIP fast heads: full test, plus the SAME frames the slow heads were scored on (1500 normal / 800 robust subsets)
-for r in fast_gt_labeled fast_gt_labeled_long fast_oracle fast_distill fast_distill_consensus fast_selfdistill fast_distill_rgbteacher fast_oracle_rgb fast_oracle_t; do
+for r in fast_gt_labeled fast_gt_labeled_long fast_oracle fast_distill fast_distill_consensus fast_gt_labeled_s1 fast_gt_labeled_s2 fast_distill_s1 fast_distill_s2 fast_selfdistill_s1 fast_selfdistill_s2 fast_distill_consensus_s1 fast_distill_consensus_s2 fast_gt_labeled_long_s1 fast_gt_labeled_long_s2 fast_selfdistill fast_distill_rgbteacher fast_oracle_rgb fast_oracle_t; do
   [ -s runs/$r/train_summary.json ] || continue
   thr=$(thr_of $r)
   python -m nightwatch.eval.metrics --pred runs/$r/pred_test.jsonl --score-thr $thr --out runs/$r/pred_test_metrics.json > /dev/null
@@ -46,6 +46,7 @@ python -m nightwatch.eval.site_bootstrap --fig --runs zs_rgb zs_dual sft_rgb sft
 python -m nightwatch.report.thr_sweep || true
 python -m nightwatch.report.teacher_sites || true
 python -m nightwatch.report.fusion_vs_lum || true
+python -m nightwatch.report.worst_case || true
 python -m nightwatch.report.llvip_thr_sweep || true
 python -m nightwatch.report.make_report
 } >> logs/finalize.log 2>&1
