@@ -105,7 +105,12 @@ def main():
     for k, fid in enumerate(ids):
         dst = os.path.join(a.out, f"{fid}.npz")
         if os.path.exists(dst) and not a.smoke:
-            continue
+            try:                                   # a killed run can leave a truncated file
+                z = np.load(dst)
+                if z["feat"].shape == (GH * GW, 1224) and z["count"].shape == (GH * GW,):
+                    continue
+            except Exception:
+                pass
         rec = recs[fid]
         xyz, inten = read_pcd(rec["lidar"])
         ts = time.time()
