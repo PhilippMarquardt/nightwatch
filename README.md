@@ -57,21 +57,30 @@ What the runs show:
 
 95 % intervals come from resampling whole sites, not frames. Every row is scored on the same frames; "darkest 25 %" is the 375 frames with the lowest camera brightness.
 
-| model | F1 | 95 % site CI | camera off | darkest 25 % |
-|---|---|---|---|---|
-| Qwen3.5-9B zero-shot, RGB | 0.839 | 0.80–0.88 | 0.00 | 0.832 |
-| zero-shot, thermal as a 2nd image | 0.696 | 0.64–0.78 | 0.20 | – |
-| 9B fine-tuned, RGB only (same recipe) | 0.882 | 0.83–0.92 | 0.00 | 0.820 |
-| **9B fine-tuned, thermal fused onto its tokens** | **0.894** | 0.87–0.93 | **0.80** | **0.902** |
-| **brightness router: fused head on dark frames, RGB-only head on bright ones** | **0.910** | 0.89–0.94 | – | 0.902 |
-| 12M fast head, 7 labelled sites (3 seeds) | 0.82 (0.80–0.83) | | 0.83 (s0) | 0.77 (0.75–0.79) |
-| … same, trained for as many steps as the pseudo-label students | 0.84* | | 0.83* | |
-| 12M fast head, self-training on the 11 unlabeled sites (control) | 0.864 | 0.82–0.89 | 0.85* | 0.841 |
-| 12M student of the 9B, consensus-filtered labels on 11 unlabeled sites (seeds 0 / 1 / 2) | 0.866 / 0.834 / 0.867 | 0.83–0.89 (s0) | 0.85* (s0) | 0.852 (s0) |
-| 12M fast head, human labels on all 18 sites (oracle) | 0.857 | 0.83–0.88 | 0.84* | 0.839 |
+| model | F1 | 95 % site CI | camera off | thermal off | darkest 25 % |
+|---|---|---|---|---|---|
+| Qwen3.5-9B zero-shot, RGB | 0.839 | 0.80–0.88 | 0.00 | – | 0.832 |
+| zero-shot, thermal as a 2nd image | 0.696 | 0.64–0.78 | 0.20 | 0.83 | – |
+| 9B fine-tuned, RGB only (same recipe) | 0.882 | 0.83–0.92 | 0.00 | 0.88 | 0.820 |
+| **9B fine-tuned, thermal only** (thermal fed as the image) | **0.923** | 0.89–0.95 | 0.92 | **0.00** | 0.891 |
+| **9B fine-tuned, thermal fused onto its tokens** | 0.894 | 0.87–0.93 | **0.80** | **0.88** | **0.902** |
+| brightness router: fused head on dark frames, RGB-only head on bright ones | 0.910 | 0.89–0.94 | – | – | 0.902 |
+| 12M fast head, 7 labelled sites (3 seeds) | 0.82 (0.80–0.83) | | 0.83 (s0) | 0.68* (s0) | 0.77 (0.75–0.79) |
+| … same, trained for as many steps as the pseudo-label students | 0.84* | | 0.83* | 0.41* | |
+| 12M fast head, self-training on the 11 unlabeled sites (control) | 0.864 | 0.82–0.89 | 0.85* | 0.72* | 0.841 |
+| 12M student of the 9B, consensus-filtered labels on 11 unlabeled sites (seeds 0 / 1 / 2) | 0.866 / 0.834 / 0.867 | 0.83–0.89 (s0) | 0.85* (s0) | 0.72* (s0) | 0.852 (s0) |
+| 12M fast head, human labels on all 18 sites (oracle) | 0.857 | 0.83–0.88 | 0.84* | 0.67* | 0.839 |
 
-- **Most of the gain over zero-shot is fine-tuning** (RGB-only: +0.043). Fusion adds +0.012 overall [−0.022, +0.065],
-  which is not significant. But the gain tracks darkness: +0.13 on the darkest site, +0.08 on the darkest quarter of
+- **The strongest single model is thermal-only, not the fused one.** The fine-tuned 9B with thermal fed straight into its
+  own ViT reaches 0.923, +0.042 over RGB-only [+0.007, +0.074] on 6/7 sites. On average, fusion is −0.030 against it
+  [−0.066, +0.012], and the regression gate blocks the fused head against thermal-only.
+- **Fusion buys the worst case, not the average.** If either sensor dies, the fused head keeps 0.80 with the camera
+  dead and 0.88 with thermal dead. Both single-sensor heads drop to 0.00 when their own sensor fails. For a robot that
+  must keep working through a dirty lens or a failed thermal core, that redundancy is the reason to fuse. The
+  operational design is to run the strongest healthy single-sensor head and fall back to the fused head on a sensor
+  fault.
+- **Most of the gain over zero-shot is fine-tuning** (RGB-only: +0.043). Against RGB-only, fusion adds +0.012 overall
+  [−0.022, +0.065], which is not significant. But the gain tracks darkness: +0.13 on the darkest site, +0.08 on the darkest quarter of
   frames, and −0.03 on the two brightest sites. With the camera black, the fused head keeps 0.80 and the RGB-only head
   gets 0.
 - **The regression gate blocked the fused head** for those two bright-site regressions. A brightness router fixes it:
