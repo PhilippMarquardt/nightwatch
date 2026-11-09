@@ -71,8 +71,9 @@ What the runs show:
 | Qwen3.5-9B zero-shot, RGB | 0.839 | 0.80–0.88 | 0.00 | n/a | 0.00 | 0.832 |
 | zero-shot, thermal as a 2nd image | 0.696 | 0.64–0.78 | 0.20 | 0.83 | 0.20 | – |
 | 9B fine-tuned, RGB only (same recipe) | 0.882 | 0.83–0.92 | 0.00 | n/a (no thermal input) | **0.00** | 0.820 |
-| **9B fine-tuned, thermal only** (thermal fed as the image) | **0.923** | 0.89–0.95 | n/a (no camera input) | 0.00 | **0.00** | 0.891 |
-| **9B fine-tuned, thermal fused onto its tokens** | 0.894 | 0.87–0.93 | **0.80** | **0.88** | **0.80** | **0.902** |
+| 9B fine-tuned, thermal only (thermal fed as the image) | 0.923 | 0.89–0.95 | n/a (no camera input) | 0.00 | **0.00** | 0.891 |
+| 9B fine-tuned, thermal fused as a side branch onto the RGB tokens | 0.894 | 0.87–0.93 | 0.80 | 0.88 | 0.80 | 0.902 |
+| **9B fine-tuned, RGB and thermal as two images** (2× visual tokens) | **0.937** | **0.92–0.95** | **0.93** | **0.89** | **0.89** | **0.916** |
 | brightness router: fused head on dark frames, RGB-only head on bright ones | 0.910 | 0.89–0.94 | – | – | – | 0.902 |
 | 12M fast head, 7 labelled sites (3 seeds) | 0.82 (0.80–0.83) | | 0.83 (s0) | 0.68* (s0) | 0.68* | 0.77 (0.75–0.79) |
 | … same, trained for as many steps as the pseudo-label students (3 seeds) | 0.84* (0.83–0.86) | | 0.83* (s0) | 0.41* (s0) | 0.41* | |
@@ -80,29 +81,27 @@ What the runs show:
 | 12M student of the 9B, consensus-filtered labels on 11 unlabeled sites (seeds 0 / 1 / 2) | 0.866 / 0.834 / 0.867 | 0.83–0.89 (s0) | 0.85* (s0) | 0.72* (s0) | 0.72* | 0.852 (s0) |
 | 12M fast head, human labels on all 18 sites (oracle) | 0.857 | 0.83–0.88 | 0.84* | 0.67* | 0.67* | 0.839 |
 
-- **The strongest single model is thermal-only, not the fused one.** The fine-tuned 9B with thermal fed straight into its
-  own ViT reaches 0.923, +0.042 over RGB-only [+0.007, +0.074] on 6/7 sites. On average, fusion is −0.030 against it
-  [−0.066, +0.012], and the regression gate blocks the fused head against thermal-only.
-- **Fusion buys the worst case, not the average.** If either sensor dies, the fused head keeps 0.80 with the camera
-  dead and 0.88 with thermal dead. Both single-sensor heads drop to 0.00 when their own sensor fails. For a robot that
-  must keep working through a dirty lens or a failed thermal core, that redundancy is the reason to fuse. The
-  operational design is to run the strongest healthy single-sensor head and fall back to the fused head on a sensor
-  fault.
+- **The simple baseline wins.** Fine-tuning the 9B on RGB and thermal as two separate images gives the best model on
+  every axis:
+  - average 0.937, +0.013 over thermal-only [+0.003, +0.027] on 6/7 sites, and +0.055 over RGB-only on 7/7
+  - worst single sensor failure 0.89 (camera dead 0.93, thermal dead 0.89)
+  - its cost is twice the visual tokens
+
+  Zero-shot, the same input was the *worst* model (0.696: it counts people twice across the two images). That
+  zero-shot result is what motivated my side-branch design, and the motivation does not survive fine-tuning.
+- **My side-branch fusion lost to it:** −0.043 [−0.071, −0.013], worse on all 7 sites. It keeps the RGB token budget
+  and survives either sensor failing (worst case 0.80, where single-sensor heads drop to 0). But on LLVIP it is beaten
+  by the two-image model in accuracy *and* robustness. Its only advantage is half the visual tokens. The fail-closed
+  regression gate blocked it against every stronger baseline. That gate is the part of this project I would carry to a
+  production fusion team.
 
   ![Average vs worst case](docs/media/fig_llvip_worst_case.png)
 
-- **Most of the gain over zero-shot is fine-tuning** (RGB-only: +0.043). Against RGB-only, fusion adds +0.012 overall
-  [−0.022, +0.065], which is not significant. But the gain tracks darkness: +0.13 on the darkest site, +0.08 on the darkest quarter of
-  frames, and −0.03 on the two brightest sites. With the camera black, the fused head keeps 0.80 and the RGB-only head
-  gets 0.
-- **The regression gate blocked the fused head** for those two bright-site regressions. A brightness router fixes it:
-  - it sends dark frames to the fused head and bright frames to the RGB-only head, with the threshold set at the
-    training-split median and no test data used
-  - it reaches 0.910, +0.028 [+0.004, +0.072] over RGB-only
-  - it passes the gate with no slice regressing
-  - both heads share one base model, so routing is an adapter swap
-  - caveat: I designed the router after seeing the per-site pattern, so it is exploratory. Router − fused is +0.016
-    [−0.004, +0.032], better on only 2 of 7 sites (the two bright ones). The dark-quarter score is the fused head's own.
+- Other comparisons on the same frames:
+  - Thermal-only beats RGB-only by +0.042 [+0.007, +0.074].
+  - The side-branch fusion beats RGB-only only in the dark: +0.13 on the darkest site, −0.03 on the two brightest.
+  - A brightness router between the fused and RGB-only heads reaches 0.910 (exploratory, designed after seeing the
+    per-site pattern).
 - Thermal as a plain second image *hurts* zero-shot on all 7 sites.
 
 ![Fusion gain vs scene brightness](docs/media/fig_llvip_fusion_vs_lum.png)

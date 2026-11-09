@@ -59,15 +59,14 @@ On 1,500 frames from the 7 test sites, with confidence intervals from resampling
 <tr><td><b>Fine-tuned, thermal only</b> (thermal fed as the image)</td><td><b>0.923</b></td><td>0.89–0.95</td><td>0.891</td><td>n/a</td><td><b>0.00</b></td></tr>
 <tr><td>Fine-tuned, thermal fused onto the RGB tokens</td><td>0.894</td><td>0.87–0.93</td><td><b>0.902</b></td><td><b>0.80</b></td><td><b>0.88</b></td></tr>
 <tr><td>Brightness router (fused head if dark, RGB-only if bright)</td><td>0.910</td><td>0.89–0.94</td><td>0.902</td><td>–</td><td>–</td></tr>
+<tr><td><b>Fine-tuned, RGB and thermal as two images</b> (2× tokens)</td><td><b>0.937</b></td><td>0.92–0.95</td><td><b>0.916</b></td><td><b>0.93</b></td><td><b>0.89</b></td></tr>
 </tbody>
 </table>
 </div>
 
-I expected the fused model to win. It does not, on average. The **thermal-only** model is the strongest single head: +0.042 over RGB-only (CI +0.007 to +0.074), better on 6 of 7 sites. On LLVIP's clean night thermal, feeding thermal straight through the VLM's own image encoder beats adding it as a side branch. Against thermal-only, fusion is −0.030 (not significant), and my fail-closed regression gate blocks it.
+I expected my fused model to win. It did not. The winner is the simplest baseline: fine-tune the VLM on the RGB and thermal frames as two separate images. It reaches 0.937, ahead of thermal-only (+0.013, 6 of 7 sites), RGB-only (+0.055, 7 of 7) and my side-branch fusion (+0.043, 7 of 7). It also keeps working when either camera dies (0.93 without the RGB camera, 0.89 without thermal). Zero-shot, the same two-image input was the worst model of all (0.696), because it counted people twice. That zero-shot number is why I built the side branch in the first place, and fine-tuning removed the problem.
 
-What fusion does buy is the **worst case**. The fused model is the only one that keeps working when either sensor dies: 0.80 with the camera dead, 0.88 with the thermal camera dead. Both single-sensor models drop to 0.00 when their own sensor fails. For a security robot, a dirty lens or a failed thermal core is a when, not an if. So the deployable design is to run the strongest healthy single-sensor head and fall back to the fused head on a sensor fault.
-
-![Average vs worst case](/nightwatch/fig_llvip_worst_case.png)
+My side-branch fusion keeps the RGB token budget and does survive either sensor failing (worst case 0.80, where both single-sensor models drop to 0). But on this dataset, twice the tokens buys a better model on every axis. My fail-closed regression gate blocked the fused model against every stronger baseline. That is the part I would bring to a fusion team on day one: a gate that refuses its author's favourite model.
 
 Two details made this concrete:
 - **The fusion gain tracks darkness.** Against RGB-only, it is +0.13 on the darkest site and about −0.035 on the two brightest. The gate blocked the fused head for those two bright sites. A router that sends dark frames to the fused head (threshold: the median brightness of the *training* frames) gets 0.910 and passes the gate. I designed it after seeing the per-site pattern, so I count it as exploratory.
