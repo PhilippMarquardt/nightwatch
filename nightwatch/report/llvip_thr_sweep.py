@@ -15,7 +15,7 @@ import numpy as np
 from nightwatch.eval.metrics import score_file
 
 RUNS = os.environ.get("NW_RUNS", "runs")
-STUDENTS = [("fast_gt_labeled", "labelled-only", "#9aa0a6"), ("fast_selfdistill", "self-training", "#199e70"),
+STUDENTS = [("fast_gt_labeled", "labelled-only", "#9aa0a6"), ("fast_gt_labeled_long", "labelled-only, compute-matched", "#5f6368"), ("fast_selfdistill", "self-training", "#199e70"),
             ("fast_distill", "VLM labels", "#d95926"), ("fast_distill_consensus", "VLM labels, consensus", "#9085e9"),
             ("fast_oracle", "human labels (oracle)", "#3987e5")]
 THRS = [round(x, 2) for x in np.arange(0.15, 0.81, 0.05)]
