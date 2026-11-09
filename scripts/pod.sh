@@ -6,9 +6,11 @@
 #   bash scripts/pod.sh status            # GPU, tmux windows, recent log lines, finished runs
 #   bash scripts/pod.sh pull              # fetch results (runs/*.json*, report/) back to this machine
 set -euo pipefail
-if [ "${POD:-1}" = 2 ]; then NW_POD_HOST=${NW_POD_HOST:-root@POD2_IP}; NW_POD_PORT=${NW_POD_PORT:-POD2_PORT}; fi   # second pod (2026-11-09)
-HOST=${NW_POD_HOST:-root@POD1_IP}
-PORT=${NW_POD_PORT:-POD1_PORT}
+# Pod endpoints live in scripts/pods.env (gitignored): POD1_HOST/POD1_PORT, POD2_HOST/POD2_PORT.
+[ -f "$(dirname "$0")/pods.env" ] && . "$(dirname "$0")/pods.env"
+if [ "${POD:-1}" = 2 ]; then NW_POD_HOST=${NW_POD_HOST:-$POD2_HOST}; NW_POD_PORT=${NW_POD_PORT:-$POD2_PORT}; fi   # second pod (2026-11-09)
+HOST=${NW_POD_HOST:-$POD1_HOST}
+PORT=${NW_POD_PORT:-$POD1_PORT}
 KEY=${NW_POD_KEY:-$HOME/.ssh/runpod_ed25519}
 REMOTE=/root/nightwatch
 cd "$(dirname "$0")/.."
