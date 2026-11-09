@@ -14,7 +14,7 @@ import os
 RUNS = os.environ.get("NW_RUNS", "runs")
 HEADS = [("zs_rgb", "VLM zero-shot, RGB", "#8a8983"), ("zs_dual", "VLM zero-shot, 2 images", "#6b6a65"),
          ("sft_rgb", "VLM, RGB only", "#199e70"), ("sft_thermal", "VLM, thermal only", "#e66767"),
-         ("sft_dual", "VLM, 2 images", "#c98500"), ("sft_fusion", "VLM, thermal fused", "#3987e5"),
+         ("sft_dual", "VLM, 2 images", "#c98500"), ("sft_dual_half", "VLM, 2 images, half res", "#e0a030"), ("sft_fusion", "VLM, thermal fused", "#3987e5"),
          ("fast_gt_labeled", "fast head, labelled", "#9085e9"), ("fast_selfdistill", "fast head, self-training", "#9085e9"),
          ("fast_oracle", "fast head, oracle", "#9085e9")]
 

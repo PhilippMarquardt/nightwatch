@@ -1,6 +1,7 @@
 """Dataset + collator for slow-head SFT and inference."""
 from __future__ import annotations
 
+import os
 import random
 
 import torch
@@ -38,8 +39,13 @@ def build_messages(mode: str, prompt: str):
     return [{"role": "user", "content": content}]
 
 
+DUAL_HALF = (672, 544)   # NW_DUAL_HALF=1: token-matched dual, 21x17 merged tokens per image ~= one 960x768 image (30x24)
+
+
 def images_for(mode, rgb, ir):
     if mode == "dual":
+        if os.environ.get("NW_DUAL_HALF"):
+            return [rgb.resize(DUAL_HALF, Image.BILINEAR), ir.convert("RGB").resize(DUAL_HALF, Image.BILINEAR)]
         return [rgb, ir.convert("RGB")]
     if mode == "thermal":
         return [ir.convert("RGB")]

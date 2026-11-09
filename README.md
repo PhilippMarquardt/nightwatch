@@ -64,7 +64,7 @@ What the runs show:
 
 ## LLVIP: fusion and distillation (RGB + thermal street cameras, 1,500 frames from 7 unseen sites)
 
-95 % intervals come from resampling whole sites, not frames. Every row is scored on the same frames; "darkest 25 %" is the 375 frames with the lowest camera brightness.
+95 % intervals come from resampling whole sites, not frames. Every row is scored on the same frames; "darkest 25 %" is the 367 frames with the lowest camera brightness. Sensor-off columns use a fixed 800-frame subset for the 9B rows (marked * for the full test set).
 
 | model | F1 | 95 % site CI | camera off | thermal off | worst single failure | darkest 25 % |
 |---|---|---|---|---|---|---|

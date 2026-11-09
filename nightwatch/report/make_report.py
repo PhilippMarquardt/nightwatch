@@ -33,18 +33,18 @@ COL = {
     "fast_distill": "#c98500", "fast_oracle": "#d55181", "fast_gt_labeled": "#9085e9",
     "fast_oracle_rgb": "#199e70", "fast_oracle_t": "#e66767",
     "sft_thermal": "#e66767", "router_lum": "#f0efec", "fast_selfdistill": "#199e70", "fast_distill_consensus": "#3987e5",
-    "fast_gt_labeled_long": "#6b6a65", "fast_distill_rgbteacher": "#d95926",
+    "fast_gt_labeled_long": "#6b6a65", "fast_distill_rgbteacher": "#d95926", "sft_dual_half": "#e0a030",
 }
 NAME = {
     "zs_rgb": f"{VLM} zero-shot (RGB)", "zs_dual": f"{VLM} zero-shot (RGB + T image)",
-    "sft_rgb": "LoRA, RGB only", "sft_dual": "LoRA, thermal as 2nd image", "sft_fusion": "LoRA, thermal fused as side branch", "sft_thermal": "LoRA, thermal only (thermal as the image)", "router_lum": "brightness router (fused if dark, RGB-only if bright)", "grpo_fusion": "fusion + GRPO (F1 reward)",
+    "sft_rgb": "LoRA, RGB only", "sft_dual": "LoRA, RGB + thermal as two images", "sft_dual_half": "LoRA, two images at half resolution (token-matched)", "sft_fusion": "LoRA, thermal fused as side branch", "sft_thermal": "LoRA, thermal only (thermal as the image)", "router_lum": "brightness router (fused if dark, RGB-only if bright)", "grpo_fusion": "fusion + GRPO (F1 reward)",
     "fast_gt_labeled": "Fast head, 7 labeled sites", "fast_distill": "Fast head, distilled from slow head",
     "fast_oracle": "Fast head, all sites hand-labeled", "fast_oracle_rgb": "Fast head, RGB only (oracle labels)",
     "fast_oracle_t": "Fast head, thermal only (oracle labels)",
     "fast_gt_labeled_long": "Fast head, 7 labeled sites, compute-matched", "fast_selfdistill": "Fast head, self-training on 11 sites",
     "fast_distill_consensus": "Fast head, VLM labels confirmed by fast head", "fast_distill_rgbteacher": "Fast head, RGB-VLM labels",
 }
-SLOW = ["zs_rgb", "zs_dual", "sft_rgb", "sft_thermal", "sft_dual", "sft_fusion", "router_lum", "grpo_fusion"]
+SLOW = ["zs_rgb", "zs_dual", "sft_rgb", "sft_thermal", "sft_dual", "sft_dual_half", "sft_fusion", "router_lum", "grpo_fusion"]
 FAST = ["fast_gt_labeled", "fast_gt_labeled_long", "fast_selfdistill", "fast_distill", "fast_distill_consensus", "fast_distill_rgbteacher", "fast_oracle", "fast_oracle_rgb", "fast_oracle_t"]
 
 plt.rcParams.update({
