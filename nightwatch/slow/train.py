@@ -120,7 +120,8 @@ def main():
         n_train = sum(p.numel() for p in train_params)
         print(f"mode={a.mode} samples={len(ds)} steps={total} trainable={n_train/1e6:.1f}M", flush=True)
         cfg = {**vars(a), "vision_lora": bool(os.environ.get("NW_VISION_LORA")), "vis_lr_mult": vis_mult,
-               "clip_mode": "per_group" if per_group else "global", "multi_drop": os.environ.get("NW_MULTI_DROP", "0.3")}
+               "clip_mode": "per_group" if per_group else "global", "multi_drop": os.environ.get("NW_MULTI_DROP", "0.3"),
+               "lidar_only_p": os.environ.get("NW_LIDAR_ONLY_P", "0"), "pc_norm_match": os.environ.get("NW_PC_NORMMATCH", "0")}
         log = RunLogger(a.out, cfg, use_wandb=(True if a.wandb else None), project="nightwatch")
 
     if ddp:

@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 MODE=${MODE:?set MODE}; SEED=${SEED:-0}
 TAG=$( [ "$SEED" = 0 ] && echo "" || echo "_s$SEED" )
-OUT=runs/t_sft_${MODE}${TAG}
+OUT=runs/t_sft_${MODE}${RUN_SUFFIX:-}${TAG}
 M=Qwen/Qwen3.5-9B; FUSED=data/trisar_fused
 [ -f STOP_$MODE ] && exit 0
 if [ ! -s $OUT/train_summary.json ]; then
@@ -18,7 +18,7 @@ fi
 INF="python -m nightwatch.slow.infer --dataset trisar --fused-dir $FUSED --model $M --bs ${IBS:-32} --workers 12 --mode $MODE --adapter $OUT --split test"
 export NW_GPU_FRAC=${EVAL_FRAC:-0.9}
 [ -s $OUT/pred_test.jsonl ]         || $INF --tasks report --conds normal --out $OUT/pred_test.jsonl
-[ -s $OUT/pred_test_robust.jsonl ]  || $INF --tasks report --conds rgb_off,thermal_off,lidar_off,sensors_shuffle --limit 600 \
+[ -s $OUT/pred_test_robust.jsonl ]  || $INF --tasks report --conds ${ROBUST_CONDS:-rgb_off,thermal_off,lidar_off,sensors_shuffle} --limit 600 \
     --out $OUT/pred_test_robust.jsonl
 [ -s $OUT/pred_test_qa.jsonl ]      || $INF --tasks lying,nearest --conds normal --limit 600 --out $OUT/pred_test_qa.jsonl
 for f in pred_test pred_test_robust pred_test_qa; do

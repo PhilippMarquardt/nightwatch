@@ -148,6 +148,8 @@ class PCTokens(nn.Module):
         self.proj = nn.Sequential(nn.LayerNorm(d_in), nn.Linear(d_in, hidden), nn.GELU(), nn.Linear(hidden, d_model))
         self.no_return = nn.Parameter(torch.randn(d_model) * 0.02)
         self.n_img, self.slot, self.n_tok = n_img, slot, n_tok
+        # tri_pc2: rescale LiDAR tokens to the per-sample RMS of the camera/thermal tokens (saved in fusion.pt)
+        self.register_buffer("norm_match", torch.tensor(float(os.environ.get("NW_PC_NORMMATCH", "0"))))
         self.extra = {"lidar": None}           # train/infer pass the token grid via set_extra({"lidar": ...})
         self._g, self._ratio = None, {}
 
@@ -168,8 +170,12 @@ class PCTokens(nn.Module):
             raise RuntimeError(f"tri_pc expects {B}x{per} visual tokens, got {po.shape[0]}")
         tok = self.proj(g.to(next(self.proj.parameters()).dtype))                    # (B, 320, D)
         empty = (g[..., -1] <= 0).unsqueeze(-1)                                      # log1p(count) == 0
-        tok = torch.where(empty, self.no_return.to(tok.dtype).expand_as(tok), tok).to(po.dtype)
+        tok = torch.where(empty, self.no_return.to(tok.dtype).expand_as(tok), tok)
         po4 = po.view(B, self.n_img, self.n_tok, -1).clone()
+        if float(self.norm_match) > 0:
+            target = po4[:, :self.slot].detach().float().pow(2).mean(-1).sqrt().mean(dim=(1, 2)).view(B, 1, 1)
+            tok = tok / tok.float().pow(2).mean(-1, keepdim=True).sqrt().clamp(min=1e-6) * target
+        tok = tok.to(po.dtype)
         self._ratio = {"pc_norm_ratio": float(tok.detach().float().norm(dim=-1).mean() / po4[:, :self.slot].detach().float().norm(dim=-1).mean().clamp(min=1e-6))}
         po4[:, self.slot] = tok
         output.pooler_output = po4.view_as(po)
@@ -230,7 +236,9 @@ def load_slow_head(model_path: str, mode: str, lora: dict | None = None, adapter
     if mode == "tri_pc":
         fusion = PCTokens(model.config.text_config.hidden_size).to(device)
         if adapter_dir:
-            fusion.load_state_dict(torch.load(os.path.join(adapter_dir, "fusion.pt"), map_location=device))
+            sd = torch.load(os.path.join(adapter_dir, "fusion.pt"), map_location=device)
+            sd.setdefault("norm_match", torch.tensor(0.0, device=device))   # tri_pc v1 checkpoints predate the buffer
+            fusion.load_state_dict(sd)
         model.model.visual.register_forward_hook(fusion.hook)
     if grad_ckpt:
         model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})

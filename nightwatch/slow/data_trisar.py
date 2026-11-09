@@ -33,7 +33,8 @@ MULTI = {"thermal_i": ("t",), "rgbt_i": ("rgb", "t"), "tri": ("rgb", "t", "l"), 
 PC_DIR = os.environ.get("NW_PC_DIR", "data/trisar_pc")     # frozen Utonia token grids (nightwatch.slow.pc_encode)
 PC_DIM = 1225                                              # 1224 Utonia features + log(1 + points in cell)
 SENSOR_LABEL = {"rgb": "Visible camera:", "t": "Thermal camera:", "l": "LiDAR range image (near = red, far = blue, black = no return):"}
-MULTI_DROP = float(os.environ.get("NW_MULTI_DROP", "0.3"))   # P(exactly one sensor blacked out) for >= 2 sensors
+MULTI_DROP = float(os.environ.get("NW_MULTI_DROP", "0.3"))
+LIDAR_ONLY_P = float(os.environ.get("NW_LIDAR_ONLY_P", "0"))   # tri_pc2: P(camera + thermal off, LiDAR kept)   # P(exactly one sensor blacked out) for >= 2 sensors
 
 PREAMBLE = {
     "thermal_i": "Sensors: thermal camera.",
@@ -190,6 +191,8 @@ def _apply_cond(rgb, th, li, cond):
         th = Image.new("L", th.size)
     elif cond == "lidar_off":
         li = Image.new("RGB", li.size)
+    elif cond == "lidar_only":         # camera and thermal both off, LiDAR kept
+        rgb, th = Image.new("RGB", rgb.size), Image.new("L", th.size)
     elif cond == "thermal_stretch":     # per-frame match to the lab training distribution: median -> 135, p99.5 -> 235
         import numpy as _np
         a = _np.asarray(th, dtype=_np.float32)
@@ -222,7 +225,9 @@ class TriSARSFT(Dataset):
         lidar_dropped = False
         if self.mode in MULTI:
             sens = MULTI[self.mode]
-            if len(sens) >= 2 and rng.random() < MULTI_DROP:      # exactly one sensor off, never two
+            if "l" in sens and LIDAR_ONLY_P > 0 and rng.random() < LIDAR_ONLY_P:
+                rgb, th, li = _apply_cond(rgb, th, li, "lidar_only")
+            elif len(sens) >= 2 and rng.random() < MULTI_DROP:      # exactly one sensor off, never two
                 off = {"rgb": "rgb_off", "t": "thermal_off", "l": "lidar_off"}[rng.choice(sens)]
                 rgb, th, li = _apply_cond(rgb, th, li, off)
                 lidar_dropped = off == "lidar_off"
