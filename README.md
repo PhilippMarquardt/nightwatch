@@ -28,8 +28,7 @@ Three questions drive every experiment:
 5. [Q2 Distillation: can the VLM teach the edge detector?](#5-q2-distillation-can-the-vlm-teach-the-edge-detector)
 6. [Q3 A genuinely new site: the LTDv2 harbour](#6-q3-a-genuinely-new-site-the-ltdv2-harbour)
 7. [What did not work](#7-what-did-not-work)
-8. [Still running](#8-still-running)
-9. [Repository and how to run](#9-repository-and-how-to-run)
+8. [Repository and how to run](#8-repository-and-how-to-run)
 
 ---
 
@@ -186,7 +185,6 @@ nearly empty. **The teacher matters when the student is out of its depth.** That
 
 ## 7. What did not work
 
-Each of these is logged with its evidence in [LAB_NOTES.md](docs/LAB_NOTES.md):
 - **My side-branch fusion** lost to plain multi-image input on LLVIP, and was ignored on TriSAR.
 - **Camera dropout taught hallucination.** A fused VLM trained with 20 % camera dropout reported 3,373 people in the
   forest, nearly all wrong. Without dropout it reported none. Keeping labels on blacked-out frames teaches "black
@@ -197,14 +195,7 @@ Each of these is logged with its evidence in [LAB_NOTES.md](docs/LAB_NOTES.md):
 - **Uncertainty-based escalation on TriSAR** lost to random escalation.
 - **Misaligned thermal is worse than no thermal** (LLVIP 0.53 vs 0.88): a sync fault is more dangerous than a dead camera.
 
-## 8. Still running
-
-| run | question | done |
-|---|---|---|
-| three images + LoRA on the vision encoder | does adapting the image encoder make LiDAR useful? (pre-registered: LiDAR off must cost ≥ 0.03) | ~15:15 |
-| camera + thermal, seeds 1–2; three images, seed 2 | does LiDAR add anything over thermal, with seeds and a CI? | ~15:45 |
-
-## 9. Repository and how to run
+## 8. Repository and how to run
 
 ```
 nightwatch/
@@ -214,7 +205,7 @@ nightwatch/
   eval/     metrics, site bootstrap, regression gates, routers
   report/   every figure and table in this README
 scripts/    pod entry point (pod.sh) and resumable run scripts
-docs/       RESULTS.md (all tables), LAB_NOTES.md (chronological log), plans, reviews, media
+docs/       RESULTS.md (all tables), media
 ```
 
 ```bash
@@ -227,5 +218,4 @@ bash scripts/run_ltd_adapt.sh             # LTDv2 adaptation arms
 
 Further reading:
 - [docs/RESULTS.md](docs/RESULTS.md): every table, including fast-head routing and per-run ablations
-- [docs/LAB_NOTES.md](docs/LAB_NOTES.md): the full timestamped record, corrections included
 - [docs/BLOG_DRAFT.md](docs/BLOG_DRAFT.md): the project as a story

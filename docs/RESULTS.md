@@ -1,7 +1,7 @@
 # Night Watch: detailed results
 
 Full per-run tables behind the summary in the [README](../README.md). Every row is scored on the same frames as the rows
-it is compared with. The chronological record, including corrections, is in [LAB_NOTES.md](LAB_NOTES.md).
+it is compared with.
 
 Paths in this file are relative to the repo root (figures are in `docs/media/`).
 
@@ -181,7 +181,7 @@ Site memory: a JEPA-style latent predictor on LTDv2 (one harbour camera over 8 m
 
 Engineering notes:
 - Every comparison is same-subset, and regression gates fail closed.
-- Four leak and overwrite bugs were caught before they reached results; see `docs/LAB_NOTES.md` §2.
+- Four leak and overwrite bugs were caught before they reached results.
 - Independent reviews (Fable, Astra) and their triage are in `docs/reviews/`.
 
 ## Design (stage 1, LLVIP)

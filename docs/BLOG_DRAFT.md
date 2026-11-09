@@ -158,8 +158,7 @@ Before training the three-image model I wrote down three criteria:
 
 On the full report, where box, posture and distance must all be right, the camera + thermal model is best (0.32 vs
 0.28–0.29 for three images, whose distance error is larger). My hypothesis for the ignored LiDAR is the frozen image
-encoder: it was pretrained on photos, and nothing taught it to read a colour-coded range image. A run that also adapts
-the vision encoder is training now, with "LiDAR off must cost ≥ 0.03" fixed as its test in advance.
+encoder: it was pretrained on photos, and nothing taught it to read a colour-coded range image.
 
 **The fast head on TriSAR runs on LiDAR.** Switching LiDAR off drops it from 0.37 to 0.22; switching the camera off
 changes nothing. A per-frame thermal level match in training and inference made thermal a second sensor it uses:
@@ -260,6 +259,3 @@ daylight. Inserted persons are found with AUROC 0.70 (pixel baseline 0.52), crow
   control then overturned my distillation story.
 - Independent AI reviewers (Fable, Codex) checked the plan, the code and the live progress. Every finding was triaged:
   fixed, deferred or rejected with a reason.
-
-*Still running as of this update: the three-image model with an adapted vision encoder (does LiDAR become useful?) and
-extra seeds of the camera + thermal and three-image models.*
