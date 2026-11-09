@@ -12,7 +12,7 @@ Three questions drive every experiment:
 |---|---|---|
 | **Q1 Fusion** | How should a 9B VLM receive thermal and LiDAR so that it actually *uses* them? | Feed each sensor as its own image. A custom fusion branch lost on every site, and on TriSAR the VLM ignored it. |
 | **Q2 Distillation** | Can the VLM teach a small edge detector? | On familiar data, not better than self-training (F1 0.85 vs 0.86). On a truly new site, yes: F1 0.13 → 0.46 with no human labels. |
-| **Q3 New sites** | Does it hold up where it was never trained? | Partly. Unseen forest at night: 0.00 → 0.44 F1 once thermal enters as an image. Unseen harbour: 75 % of the gap to human labels closed. |
+| **Q3 New sites** | Does it hold up where it was never trained? | Partly. Unseen forest at night: 0.00 → 0.44 F1 once thermal enters as an image (the forest also guided development). Untouched harbour: 75 % of the gap to human labels closed. |
 
 ![Unseen forest at night: camera, thermal + LiDAR with ground truth, system output](docs/media/demo_forest_best.gif)
 
@@ -34,7 +34,7 @@ Three questions drive every experiment:
 
 ## 1. Datasets
 
-Three public datasets, each split so that the test data comes from **a place (or time) never used for training or tuning**.
+Three public datasets, each split so that the test data comes from **a place (or time) never used for training**.
 
 | | **LLVIP** | **TriSAR-3D** | **LTDv2** |
 |---|---|---|---|
@@ -73,7 +73,10 @@ Two fusion designs were compared for the slow head:
 
 ## 3. How results are measured
 
-- **Held-out sites only.** No test site, sequence or month was used for training, thresholds or model choice.
+- **Held-out sites.** No test site, sequence or month was used for training or for thresholds. One honest caveat:
+  the TriSAR forest was scored many times while I developed the system, and its failures drove design choices
+  (sensors as images, thermal normalisation). Treat it as a development site after its first evaluation. The
+  untouched test is the LTDv2 harbour: its test months were scored once per finished model and decided nothing.
 - **Confidence intervals by site or clip, not by frame.** I resample whole sites (LLVIP), sequences (TriSAR) or
   clips (LTDv2), because frames from one place are not independent.
 - **Seeds.** Three seeds wherever results vary by seed; single-seed rows are labelled.

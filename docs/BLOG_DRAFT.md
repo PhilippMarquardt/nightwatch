@@ -71,7 +71,9 @@ I compared two ways of giving the VLM its extra sensors:
 
 ## 3. How I measured
 
-- **Unseen places only.** No test site, sequence or month was used for training, thresholds or model choice.
+- **Unseen places, with one caveat.** No test site, sequence or month was used for training or thresholds. But I
+  scored the TriSAR forest many times while developing, and its failures shaped the design, so after its first
+  evaluation it is really a development site. The untouched test is the LTDv2 harbour, scored once per finished model.
 - **Intervals from resampling whole sites, sequences or clips.** Frames from one camera are correlated, so
   frame-level intervals are far too narrow.
 - **Three seeds** wherever results move with the seed; single-seed rows say so.
