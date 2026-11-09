@@ -52,16 +52,16 @@ What the runs show:
 
 ## LLVIP: fusion and distillation (RGB + thermal street cameras, 1,500 frames from 7 unseen sites)
 
-95 % intervals come from resampling whole sites, not frames.
+95 % intervals come from resampling whole sites, not frames. Every row is scored on the same frames; "darkest 25 %" is the 375 frames with the lowest camera brightness.
 
 | model | F1 | 95 % site CI | camera off | darkest 25 % |
 |---|---|---|---|---|
-| Qwen3.5-9B zero-shot, RGB | 0.839 | 0.80–0.88 | 0.00 | 0.837 |
+| Qwen3.5-9B zero-shot, RGB | 0.839 | 0.80–0.88 | 0.00 | 0.832 |
 | zero-shot, thermal as a 2nd image | 0.696 | 0.64–0.78 | 0.20 | – |
 | **9B fine-tuned, thermal fused onto its tokens** | **0.894** | 0.87–0.93 | **0.80** | **0.902** |
-| 12M fast head, 7 labelled sites (3 seeds) | 0.82 (0.80–0.83) | | | 0.78 |
-| 12M student of the 9B, consensus-filtered labels on 11 unlabeled sites (preliminary, 1 seed) | **0.866** | 0.83–0.89 | | 0.850 |
-| 12M fast head, human labels on all 18 sites (oracle) | 0.857 | 0.83–0.88 | | 0.838 |
+| 12M fast head, 7 labelled sites (3 seeds) | 0.82 (0.80–0.83) | | | 0.77 (0.75–0.79) |
+| 12M student of the 9B, consensus-filtered labels on 11 unlabeled sites (preliminary, 1 seed) | **0.866** | 0.83–0.89 | | 0.852 |
+| 12M fast head, human labels on all 18 sites (oracle) | 0.857 | 0.83–0.88 | | 0.839 |
 
 - Fusion lifts the 9B model on all 7 sites (+0.055 over zero-shot, CI +0.035 to +0.076). It still finds people with the
   camera black (0.80). Thermal as a plain second image *hurts* on all 7 sites.
