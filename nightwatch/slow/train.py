@@ -115,7 +115,7 @@ def main():
     if rank == 0:
         n_train = sum(p.numel() for p in train_params)
         print(f"mode={a.mode} samples={len(ds)} steps={total} trainable={n_train/1e6:.1f}M", flush=True)
-        log = RunLogger(a.out, vars(a), use_wandb=a.wandb, project="nightwatch")
+        log = RunLogger(a.out, vars(a), use_wandb=(True if a.wandb else None), project="nightwatch")
 
     if ddp:
         # LoRA params live in `model`; fusion params are synced manually below (all-reduce grads)

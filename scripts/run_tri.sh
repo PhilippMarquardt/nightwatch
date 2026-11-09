@@ -24,4 +24,5 @@ export NW_GPU_FRAC=${EVAL_FRAC:-0.9}
 for f in pred_test pred_test_robust pred_test_qa; do
   python -m nightwatch.eval.metrics_trisar --pred $OUT/$f.jsonl --out $OUT/${f}_metrics.json > /dev/null
 done
+python -m nightwatch.wandb_sync $OUT > /dev/null 2>&1 || true   # results into the run's W&B summary
 echo "TRI_DONE $MODE $SEED"

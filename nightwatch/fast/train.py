@@ -99,7 +99,7 @@ def main():
     warm = min(500, iters // 10)
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda i: min(1, (i + 1) / warm) * 0.5 * (1 + math.cos(math.pi * i / iters)))
     gen = torch.Generator(device=dev); gen.manual_seed(a.seed)
-    log = RunLogger(out_dir, vars(a), use_wandb=a.wandb)
+    log = RunLogger(out_dir, vars(a), use_wandb=(True if a.wandb else None))
     print(f"{a.name}: {len(X)} train frames, {iters} iters, on-gpu={X.is_cuda}", flush=True)
 
     best_ap, it, t0 = -1.0, 0, time.time()
