@@ -169,6 +169,35 @@ What the runs show:
   recovers 61 % of the fast→slow gap (random: 28 %). On TriSAR, where the 9B is blind at night, the same rule loses to
   random. Routing must know which head to trust for the scene.
 
+## A genuinely new site: the LTDv2 harbour (fast head, 3 seeds)
+
+The LLVIP thermal fast head is dropped onto LTDv2: a harbour thermal camera in another country, at 384×288, with
+people a median 16–19 px tall.
+- It adapts on 2,000 unlabelled frames from May 2020.
+- It is tested on March–April 2021: 15,925 frames in 142 clips, never used for any choice.
+- Every arm gets the same 3,000 fine-tuning steps from the same start model.
+- Thresholds come from the LLVIP validation site only.
+
+| labels for the adaptation month | F1 @ IoU 0.5, mean (range) | AP50 |
+|---|---|---|
+| none (zero-shot) | 0.132 | 0.072 |
+| none, same extra steps on LLVIP | 0.135 (0.130–0.138) | 0.067 |
+| the fast head's own labels (self-training) | 0.140 (0.129–0.145) | 0.085 |
+| 9B box kept only where the fast head agrees (consensus) | 0.234 (0.228–0.246) | 0.219 |
+| **thermal 9B labels** | **0.460 (0.446–0.469)** | **0.374** |
+| human labels (upper bound; 2 of 3 seeds so far) | 0.573 (0.571–0.574) | 0.519 |
+
+Paired bootstrap over the 142 test clips, per seed:
+- **Pre-registered primary contrast, consensus − self-training: +0.098 [+0.088, +0.109] and +0.101 [+0.091, +0.111].**
+- Pre-registered secondary, self-training − extra steps: ≤ +0.008.
+- 9B labels − self-training: +0.33 (post hoc).
+
+The 9B's labels recover about 75 % of the zero-shot → human-label gap with no human label at the new site, and the
+adapted head does not get worse at home (LLVIP 0.870 vs 0.859). This is the opposite of LLVIP, where the teacher added
+nothing on F1. At the harbour the small head finds 5 % of people, so its own labels are empty. **The teacher matters
+when the student is out of its depth.** The consensus filter that helped on LLVIP hurts here, because a student that
+barely fires vetoes most real people.
+
 Site memory: a JEPA-style latent predictor on LTDv2 (one harbour camera over 8 months) detects inserted persons at AUROC
 0.70 (pixel baseline 0.52) and crowds at 0.85 (token baseline 0.67).
 

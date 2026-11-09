@@ -174,23 +174,23 @@ running too, because one seed is not enough to call a +0.05 difference.
 **Track B: a real new site.** The forest was not really "new" any more: I had tuned against it. So the LLVIP
 thermal fast head is dropped onto LTDv2, a harbour thermal camera in another country, at another resolution, tested on
 months a year after the adaptation month. One unlabelled month of frames gets labelled, and the fast head fine-tunes
-on those labels for the same number of steps in every arm. Seed 0 (seeds 1–2 running):
+on those labels for the same number of steps in every arm. Three seeds per arm (mean):
 
 <div class="table-wrap">
 <table>
 <thead><tr><th>Labels for the new site's first month</th><th>F1 a year later</th><th>AP50</th></tr></thead>
 <tbody>
 <tr><td>None (zero-shot)</td><td>0.13</td><td>0.07</td></tr>
-<tr><td>None, same extra training on the home data</td><td>0.13</td><td>0.07</td></tr>
-<tr><td>The fast head's own labels (self-training)</td><td>0.13</td><td>0.09</td></tr>
+<tr><td>None, same extra training on the home data</td><td>0.14</td><td>0.07</td></tr>
+<tr><td>The fast head's own labels (self-training)</td><td>0.14</td><td>0.09</td></tr>
 <tr><td>Only boxes both 9B and fast head agree on</td><td>0.23</td><td>0.22</td></tr>
-<tr><td><b>The thermal 9B's labels</b></td><td><b>0.47</b></td><td><b>0.37</b></td></tr>
-<tr><td>Human labels (upper bound)</td><td>0.57</td><td>0.51</td></tr>
+<tr><td><b>The thermal 9B's labels</b></td><td><b>0.46</b> (0.45–0.47)</td><td><b>0.37</b></td></tr>
+<tr><td>Human labels (upper bound)</td><td>0.57</td><td>0.52</td></tr>
 </tbody>
 </table>
 </div>
 
-The 9B's labels recover about three quarters of the gap to human labels, with no human labelling at the new site, and
+Across 142 test clips, the pre-registered comparison (9B labels filtered by the fast head vs self-training) is +0.10 F1 on every finished seed, with tight intervals. The 9B's labels recover about three quarters of the gap to human labels, with no human labelling at the new site, and
 the adapted head does not get worse at home (LLVIP 0.87 vs 0.86). This is the opposite of the LLVIP distillation
 result, and the reason is visible in the labels themselves:
 - **At the harbour the small head finds 5 % of people,** so its own labels are nearly empty (F1 0.10) and only the 9B
