@@ -1,8 +1,21 @@
 # Night Watch: camera + thermal + LiDAR perception for security robots after dark
 
-Two heads read one fused sensor frame. A **9B vision-language model** (Qwen3.5-9B + LoRA) writes an incident
-report with posture and metric range. A **12M-parameter detector** runs in 0.7 ms on TensorRT. Every number below comes
-from **sites neither model saw in training**, including a forest at night where the camera is black.
+Two heads read the same camera, thermal and LiDAR frame. A **9B vision-language model** (Qwen3.5-9B + LoRA) writes an
+incident report with posture and metric range. A **12M-parameter detector** runs in 0.7 ms on TensorRT. Every number
+below comes from **sites neither model saw in training**, including a forest at night where the camera is black.
+
+**In short.** Each result is backed by site-level confidence intervals, three seeds where seeds vary, and a fail-closed
+regression gate.
+- **LLVIP (RGB + thermal, 7 unseen sites):**
+  - The best model is the simplest fusion: the 9B fine-tuned on both images. It reaches 0.937, and 0.89 with either
+    camera dead.
+  - My native-encoder side-branch fusion lost to it on all 7 sites, and the gate blocked it.
+  - Self-training beats distilling the 9B into the small head on F1. The 9B teacher only improves ranking.
+- **TriSAR-3D (RGB + thermal + LiDAR, unseen forest at night):**
+  - The 9B models are blind in the dark, and the LiDAR fast head is not.
+  - A fused 9B that never learned its extra sensors hallucinated 3,373 people.
+  - The best system pairs a camera-only 9B (posture, range) with a thermal-normalised LiDAR fast head: 0.48 over 3
+    seeds, against 0.36 for the fast head alone.
 
 ![Unseen forest at night: camera, thermal + LiDAR with ground truth, system output](docs/media/demo_forest_best.gif)
 
