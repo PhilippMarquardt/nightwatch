@@ -33,7 +33,7 @@ posture and range. This window was chosen as the forest's best; the forest's ove
 | VLM zero-shot, RGB (600-frame subset) | 0.07 | – | – | – |
 | VLM fine-tuned, RGB only | 0.25 | 0.16 | 0.00 | 0.78 |
 | VLM fine-tuned, RGB + thermal + LiDAR, 20 % camera-dropout | 0.17 | 0.11 | 0.00 | 0.79 |
-| VLM fine-tuned, RGB + thermal + LiDAR, **no camera-dropout** | **0.26** | **0.17** | 0.00 | **0.82** |
+| VLM fine-tuned, RGB + thermal + LiDAR, **no camera-dropout** (2 seeds) | **0.26 / 0.25** | **0.17** | 0.00 | **0.82 / 0.80** |
 | VLM fine-tuned, RGB + thermal + LiDAR, 50 % camera-dropout | 0.24 | 0.16 | 0.00 | 0.76 |
 | fast head, 12M (mean of 3 seeds, range) | 0.36 (0.30–0.40) | 0.33 (0.27–0.38) | **0.30 (0.24–0.36)** | 0.56 (0.55–0.57) |
 | combined: VLM (camera-dropout) + non-overlapping fast detections (3 seeds) | 0.42 (0.35–0.46) | 0.37 (0.31–0.42) | 0.30 (0.24–0.35) | 0.76 |
@@ -59,9 +59,10 @@ What the runs show:
    | RGB + T + LiDAR, **no** camera-dropout | **0** |
 
    Camera-dropout with the lab people kept as targets on black frames taught the model "black camera ⇒ report
-   people". Without dropout, the fused model reports nobody in the forest. On one seed it is also the strongest TriSAR
-   slow head (held-out lab 0.82 vs 0.78 RGB-only, gate SHIP). Its sensor ablations show it barely uses thermal or
-   LiDAR (point 3), so that gain is not fusion. A second seed decides whether it is noise. Why 50 % dropout hallucinates far
+   people". Without dropout, the fused model reports almost nobody in the forest (0 and 4 reports over two seeds). On
+   both seeds it is also the strongest TriSAR slow head (held-out lab 0.817 / 0.801 vs 0.781 RGB-only, gate SHIP
+   twice). Its sensor ablations show it barely uses thermal or
+   LiDAR (point 3), so that gain is not fusion; it is a consistent side effect of training with the extra branches. Why 50 % dropout hallucinates far
    less than 20 % is still open.
    The lesson: an augmentation that keeps labels the input no longer supports teaches a prior, and only an unseen
    site exposed it.
