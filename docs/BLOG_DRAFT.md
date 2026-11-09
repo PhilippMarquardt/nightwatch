@@ -1,7 +1,5 @@
 # Night Watch: Camera, Thermal and LiDAR Perception After Dark
 
-<!-- DRAFT for personal-site/blog-posts/nightwatch.md. Media go to personal-site/public/nightwatch/.
-     Sections marked PENDING are filled from the overnight run (LLVIP distillation, controls, dual baseline). -->
 
 A security robot does most of its work at night, at sites it has never seen. That breaks two habits of computer vision. The camera is the weakest sensor in the dark, and the usual test split shares locations with training. This project builds a small version of a full multi-sensor perception stack and evaluates it only on held-out sites:
 
@@ -67,6 +65,8 @@ On 1,500 frames from the 7 test sites, with confidence intervals from resampling
 I expected my fused model to win. It did not. The winner is the simplest baseline: fine-tune the VLM on the RGB and thermal frames as two separate images. It reaches 0.937, ahead of thermal-only (+0.013, 6 of 7 sites), RGB-only (+0.055, 7 of 7) and my side-branch fusion (+0.043, 7 of 7). It also keeps working when either camera dies (0.93 without the RGB camera, 0.89 without thermal). Zero-shot, the same two-image input was the worst model of all (0.696), because it counted people twice. That zero-shot number is why I built the side branch in the first place, and fine-tuning removed the problem.
 
 My side-branch fusion keeps the RGB token budget and does survive either sensor failing (worst case 0.80, where both single-sensor models drop to 0). I gave it one last chance: a two-image model at half resolution, with the same visual-token budget as mine. It still won on all 7 sites (0.928 vs 0.894) and in the worst case (0.88 vs 0.80). My fail-closed regression gate blocked the fused model against every stronger baseline. That is the part I would bring to a fusion team on day one: a gate that refuses its author's favourite model.
+
+![Average vs worst case](/nightwatch/fig_llvip_worst_case.png)
 
 Two details made this concrete:
 - **The fusion gain tracks darkness.** Against RGB-only, it is +0.13 on the darkest site and about −0.035 on the two brightest. The gate blocked the fused head for those two bright sites. A router that sends dark frames to the fused head (threshold: the median brightness of the *training* frames) gets 0.910 and passes the gate. I designed it after seeing the per-site pattern, so I count it as exploratory.
@@ -136,11 +136,73 @@ The fast head runs on LiDAR: switching LiDAR off drops it from 0.37 to 0.22, and
 - **Single seeds.** One consensus-student seed gave 0.866 and looked like "the student matches the oracle"; another gave 0.830. One thermal-normalisation seed gave forest 0.42, another 0.31. Every claim above uses three seeds or a paired site bootstrap.
 - **Site-memory events I defined by hand.** The "person at the water's edge" region was wrong and fired on almost every frame. I excluded those numbers.
 
-## 7. Site memory
+## 7. In progress: every sensor as an image, and a genuinely new site
+
+*This section is updated as the follow-up experiments finish. Every number here is from a finished run; anything still
+running is labelled.* After the overnight results I wrote a new plan, had it reviewed independently by two AI reviewers
+(both said "modify"), and fixed the success criteria before training. Two GPUs run it.
+
+**Track A: can the 9B learn to use thermal and LiDAR?** Every sensor goes into the VLM's own image encoder as a
+separate image (camera, thermal, and a colour-coded LiDAR range image), instead of the side branch it ignored.
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>TriSAR slow head (one seed)</th><th>All</th><th>Unseen forest</th><th>Forest precision</th><th>Held-out lab</th></tr></thead>
+<tbody>
+<tr><td>Camera only</td><td>0.25</td><td>0.00</td><td>–</td><td>0.78</td></tr>
+<tr><td>Thermal fused as a side branch</td><td>0.26</td><td>0.00</td><td>–</td><td>0.82</td></tr>
+<tr><td>Thermal as an image</td><td>0.41</td><td>0.33</td><td>0.29</td><td>0.82</td></tr>
+<tr><td>Camera + thermal as images</td><td>0.48</td><td>0.39</td><td>0.39</td><td>0.86</td></tr>
+<tr><td><b>Camera + thermal + LiDAR as images</b></td><td><b>0.53</b></td><td><b>0.44</b></td><td><b>0.52</b></td><td>0.85</td></tr>
+</tbody>
+</table>
+</div>
+
+The 9B now sees people in the black forest for the first time. With the camera dead it still scores 0.82 in the lab,
+where every earlier TriSAR VLM scored 0.00, so it passes my first pre-registered criterion. It fails the other two:
+- **LiDAR is ignored.** Switching LiDAR off changes nothing (−0.004); thermal does the work (thermal off: forest
+  0.43 → 0.15).
+- **Precision is 0.60**, below my 0.70 bar.
+
+My hypothesis is the frozen image encoder: it was pretrained on photos, and nothing taught it to read a colour-coded
+range image. A run with the vision encoder adapted too (LoRA on all 27 ViT blocks) is training now, with "LiDAR off
+must cost ≥ 0.03" fixed as its test in advance. Second seeds of the three-image and camera + thermal models are
+running too, because one seed is not enough to call a +0.05 difference.
+
+**Track B: a real new site.** The forest was not really "new" any more: I had tuned against it. So the LLVIP
+thermal fast head is dropped onto LTDv2, a harbour thermal camera in another country, at another resolution, tested on
+months a year after the adaptation month. One unlabelled month of frames gets labelled, and the fast head fine-tunes
+on those labels for the same number of steps in every arm. Seed 0 (seeds 1–2 running):
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>Labels for the new site's first month</th><th>F1 a year later</th><th>AP50</th></tr></thead>
+<tbody>
+<tr><td>None (zero-shot)</td><td>0.13</td><td>0.07</td></tr>
+<tr><td>None, same extra training on the home data</td><td>0.13</td><td>0.07</td></tr>
+<tr><td>The fast head's own labels (self-training)</td><td>0.13</td><td>0.09</td></tr>
+<tr><td>Only boxes both 9B and fast head agree on</td><td>0.23</td><td>0.22</td></tr>
+<tr><td><b>The thermal 9B's labels</b></td><td><b>0.47</b></td><td><b>0.37</b></td></tr>
+<tr><td>Human labels (upper bound)</td><td>0.57</td><td>0.51</td></tr>
+</tbody>
+</table>
+</div>
+
+The 9B's labels recover about three quarters of the gap to human labels, with no human labelling at the new site, and
+the adapted head does not get worse at home (LLVIP 0.87 vs 0.86). This is the opposite of the LLVIP distillation
+result, and the reason is visible in the labels themselves:
+- **At the harbour the small head finds 5 % of people,** so its own labels are nearly empty (F1 0.10) and only the 9B
+  (F1 0.44) can bootstrap it.
+- **The teacher matters when the student is out of its depth.**
+
+The "agree on" filter that helped on LLVIP hurts here: intersecting with a student that barely fires throws away most
+real people.
+
+## 8. Site memory
 
 A JEPA-style predictor on LTDv2 (one harbour thermal camera over 8 months) predicts the next frame's frozen DINOv3 tokens from recent frames and a per-site memory. Anomaly is surprise: the peak token prediction error, z-scored per hour and daylight. Inserted persons are found with AUROC 0.70 (pixel baseline 0.52), crowds with 0.85 (token baseline 0.67). The two context types catch different anomalies, and combining them naively averaged the signals away.
 
-## 8. Engineering that kept the numbers honest
+## 9. Engineering that kept the numbers honest
 
 - Every comparison uses the same frames; a gate refuses to compare runs with different frame counts.
 - Pseudo-labels originally covered only the 1,500-frame test subset, and the student silently fell back to ground truth for the rest. Caught before training.
@@ -149,4 +211,4 @@ A JEPA-style predictor on LTDv2 (one harbour thermal camera over 8 months) predi
 - Every comparison passes through a fail-closed, per-slice regression gate. Overnight it blocked the fused VLM against both single-sensor VLMs, and both distilled students against self-training. It passed the brightness router and the fused VLM under sensor failure. A gate that blocks the author's favourite model is the point.
 - Before each control result arrived, I wrote down what outcome would count against the claim. The self-training control then overturned my distillation story.
 
-PENDING (morning): fused vs two-image fine-tuning (dual) row, zero-camera-dropout TriSAR control, edge latency table.
+
