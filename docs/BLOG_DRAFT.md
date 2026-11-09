@@ -16,7 +16,7 @@ I set out to answer three questions:
 <table>
 <thead><tr><th></th><th>Question</th><th>Short answer</th></tr></thead>
 <tbody>
-<tr><td><b>Fusion</b></td><td>How should a 9B VLM receive thermal and LiDAR so that it actually uses them?</td><td>Thermal as an extra image works, where my custom fusion branch lost or was ignored. LiDAR is ignored, as an image and as native point-cloud tokens.</td></tr>
+<tr><td><b>Fusion</b></td><td>How should a 9B VLM receive thermal and LiDAR so that it actually uses them?</td><td>Thermal as an extra image works, where my custom fusion branch lost or was ignored. LiDAR is ignored: as an image, as native point-cloud tokens, and even when training forces it.</td></tr>
 <tr><td><b>Distillation</b></td><td>Can the VLM teach a small edge detector?</td><td>On familiar data, no better than self-training. On a truly new site, yes: F1 0.13 → 0.46 without a single human label.</td></tr>
 <tr><td><b>New sites</b></td><td>Does it hold up where it was never trained?</td><td>Partly. In an unseen forest at night the VLM goes from blind (0.00) to 0.44. At an unseen harbour, 75 % of the gap to human labels is closed.</td></tr>
 </tbody>
@@ -173,7 +173,16 @@ put its features into the LiDAR image's token slots. First I checked the feature
 (forest: 0.43 vs 0.10). The VLM still ignored them: switching LiDAR off cost 0.007 and 0.012 lab F1 on two seeds,
 below the 0.03 I set in advance, and distance error did not improve. The features carry the signal; one epoch of
 training does not teach the language model to read them. My best explanation is that nothing forces it to: camera and
-thermal already suffice in the lab, and my dropout never leaves LiDAR alone. That is the next experiment.
+thermal already suffice in the lab, and my dropout never leaves LiDAR alone.
+
+So I forced it. On 15 % of training samples I switched the camera and thermal off together, leaving LiDAR as the only
+sensor, and rescaled the LiDAR tokens to match the image tokens. It still did not work. With LiDAR as the only input,
+the model outputs about two boxes in the same central spot on every frame: it learned how many people there usually
+are and where they usually stand, not how to read them from the point cloud. Before believing that, I checked that my
+token grid really lines up with Qwen3.5's visual tokens (it does, 7 of 7 test cells). The surprise was elsewhere. This
+run is the best detector so far, +0.04 to +0.05 F1 over the three-image model on the same seeds, and +0.05 to +0.07 in
+the forest. That gain survives switching LiDAR off, so it comes from training with frames where the main sensors are
+missing, not from LiDAR.
 
 ![Utonia point-cloud features per VLM token, next to the range image the VLM got](/nightwatch/fig_utonia_tokens.png)
 

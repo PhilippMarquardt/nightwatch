@@ -10,7 +10,7 @@ Three questions drive every experiment:
 
 | | question | short answer |
 |---|---|---|
-| **Q1 Fusion** | How should a 9B VLM receive thermal and LiDAR so that it actually *uses* them? | Feed thermal as its own image: that works where a custom fusion branch lost or was ignored. LiDAR is ignored, both as an image and as native point-cloud tokens, after one epoch. |
+| **Q1 Fusion** | How should a 9B VLM receive thermal and LiDAR so that it actually *uses* them? | Feed thermal as its own image: that works where a custom fusion branch lost or was ignored. LiDAR is ignored: as an image, as native point-cloud tokens, and even when training forces LiDAR-only samples. |
 | **Q2 Distillation** | Can the VLM teach a small edge detector? | On familiar data, not better than self-training (F1 0.85 vs 0.86). On a truly new site, yes: F1 0.13 → 0.46 with no human labels. |
 | **Q3 New sites** | Does it hold up where it was never trained? | Partly. Unseen forest at night: 0.00 → 0.44 F1 once thermal enters as an image (the forest also guided development). Untouched harbour: 75 % of the gap to human labels closed. |
 
@@ -162,9 +162,15 @@ Mean (range) over seeds; "lab, camera dead" is on the fixed 600-frame robustness
   - **The VLM ignores them anyway.** Switching LiDAR off costs 0.007 and 0.012 lab F1 on the two seeds (bar: 0.03), and
     distance error does not improve (6.3 / 4.2 m vs 3.2–4.4 m). Overall F1 does not regress (0.565 / 0.524 vs 0.522–0.530
     for three images). Seed 0's lead survives LiDAR-off, so it is not LiDAR use either.
-  - **Likely reasons:** nothing in training forces LiDAR use, because camera + thermal already suffice in the lab and
-    my sensor dropout never leaves LiDAR alone. The projected tokens also drifted to 10–17× the image-token scale. The
-    next run would drop camera and thermal together on some samples and norm-match the projector.
+  - **Forcing it did not work either.** A follow-up switched camera and thermal off together on 15 % of training
+    samples (LiDAR the only sensor left) and rescaled the LiDAR tokens to the image-token norm. With LiDAR as the only
+    input, both seeds still score 0.00 lab F1. They output about two boxes in the same central spot on every frame,
+    which is a memorised prior. LiDAR-off costs 0.027 / −0.002 lab F1. A direct check confirmed the token grid matches
+    Qwen3.5's visual-token layout (7/7 test cells), so this is not an alignment bug.
+  - **What the follow-up did change: detection, without LiDAR.** It is the best TriSAR VLM on both seeds: 0.581 / 0.562
+    F1, +0.052 / +0.039 over three images on the same seeds, forest +0.067 / +0.052 (block-bootstrap CIs exclude 0).
+    The gain survives LiDAR-off, so it comes from the training regime (frames with camera and thermal both missing),
+    not from reading LiDAR. The same regime without LiDAR was not run, so its exact source is untested.
 
   ![Utonia point-cloud features per VLM token (PCA), next to the range image the VLM got](docs/media/fig_utonia_tokens.png)
 
