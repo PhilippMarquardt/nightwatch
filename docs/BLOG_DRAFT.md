@@ -84,8 +84,8 @@ The fused VLM labelled 8,164 frames from 11 sites whose labels I withheld. A 12M
 <thead><tr><th>12M fast head, labels on the 11 extra sites</th><th>F1</th><th>AP50</th></tr></thead>
 <tbody>
 <tr><td>none (7 labelled sites only)</td><td>0.82 (0.81–0.83)</td><td>0.87</td></tr>
-<tr><td>none, trained for as many steps (compute-matched)</td><td>0.84</td><td>0.89</td></tr>
-<tr><td>its own labels (self-training)</td><td><b>0.86</b></td><td>0.89</td></tr>
+<tr><td>none, trained for as many steps (compute-matched)</td><td>0.84 (0.83–0.86)</td><td>0.89</td></tr>
+<tr><td>its own labels (self-training)</td><td><b>0.86 (0.86–0.86)</b></td><td>0.89</td></tr>
 <tr><td>VLM labels</td><td>0.83 (0.83–0.84)</td><td><b>0.91</b></td></tr>
 <tr><td>VLM labels, kept where the small head agrees</td><td>0.85 (0.83–0.87)</td><td><b>0.91</b></td></tr>
 <tr><td>human labels (oracle)</td><td>0.86</td><td>0.91</td></tr>
@@ -93,7 +93,7 @@ The fused VLM labelled 8,164 frames from 11 sites whose labels I withheld. A 12M
 </table>
 </div>
 
-The self-training control is the most useful number in this project. Labelling the extra sites closes the gap to the human-label oracle, but the small head's own labels do it as well as the 9B teacher's: +0.03 over labelled-only on 7 of 7 sites, in two seeds. Only about a third of that is extra training steps.
+The self-training control is the most useful number in this project. Labelling the extra sites closes the gap to the human-label oracle, but the small head's own labels do it as well as the 9B teacher's: +0.03 over labelled-only on 7 of 7 sites, in two seeds. Some of it is just extra training steps. A labelled-only head trained for as many steps gets 0.844 on average, so the self-labelled data adds about +0.015 beyond that, significant on two of three seeds.
 
 The teacher's labels still carry something. Every VLM-labelled student ranks detections as well as the oracle (AP50 0.91 vs 0.89 for self-training). But its operating point, the score threshold tuned on a one-site validation set, does not transfer, so F1 doesn't show it. The teacher's own labels on those sites are F1 0.82 against the withheld ground truth, and at two bright, tree-lined sites it boxes street lamps and foliage as people. On easy pedestrians, that is no better than what the small head already knows. A VLM teacher should pay off where the small model is weak: posture, range and unfamiliar sites, not LLVIP boxes.
 

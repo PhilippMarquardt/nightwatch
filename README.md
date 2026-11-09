@@ -75,7 +75,7 @@ What the runs show:
 | **9B fine-tuned, thermal fused onto its tokens** | 0.894 | 0.87–0.93 | **0.80** | **0.88** | **0.80** | **0.902** |
 | brightness router: fused head on dark frames, RGB-only head on bright ones | 0.910 | 0.89–0.94 | – | – | – | 0.902 |
 | 12M fast head, 7 labelled sites (3 seeds) | 0.82 (0.80–0.83) | | 0.83 (s0) | 0.68* (s0) | 0.68* | 0.77 (0.75–0.79) |
-| … same, trained for as many steps as the pseudo-label students | 0.84* | | 0.83* | 0.41* | 0.41* | |
+| … same, trained for as many steps as the pseudo-label students (3 seeds) | 0.84* (0.83–0.86) | | 0.83* (s0) | 0.41* (s0) | 0.41* | |
 | 12M fast head, self-training on the 11 unlabeled sites (control) | 0.864 | 0.82–0.89 | 0.85* | 0.72* | 0.72* | 0.841 |
 | 12M student of the 9B, consensus-filtered labels on 11 unlabeled sites (seeds 0 / 1 / 2) | 0.866 / 0.834 / 0.867 | 0.83–0.89 (s0) | 0.85* (s0) | 0.72* (s0) | 0.72* | 0.852 (s0) |
 | 12M fast head, human labels on all 18 sites (oracle) | 0.857 | 0.83–0.88 | 0.84* | 0.67* | 0.67* | 0.839 |
@@ -114,9 +114,16 @@ What the runs show:
   operating point does not survive a one-site validation set. Its labels on the unlabeled sites (F1 0.82 vs withheld
   GT, with hallucinated lamps and foliage at two bright sites) are no better than the small head's own confident labels
   on easy LLVIP pedestrians.
-- **Self-training is not just more steps.** A labelled-only student trained for the same number of updates reaches 0.843;
-  self-training is +0.019 above it [+0.005, +0.030] (full test set). About a third of the gain is steps, and two thirds
-  is the self-labelled data from 11 more sites.
+- **Self-training is mostly, but not only, more steps.** Over three seeds on the full test set:
+
+  | | mean F1 | range |
+  |---|---|---|
+  | labelled-only | 0.821 | 0.805–0.833 |
+  | labelled-only trained for as many steps | 0.844 | 0.827–0.861 |
+  | self-training | 0.859 | 0.855–0.862 |
+
+  Self-training minus compute-matched, seed by seed, is +0.019 and +0.028 (significant) and −0.001. The self-labelled
+  data adds about +0.015 beyond extra steps, and self-training is the most stable of the three recipes.
 - **Fusion is spatial, and misalignment is dangerous.** With thermal taken from a different frame, the 9B drops to 0.53
   (0.88 with thermal simply off). A sync or calibration fault is worse than a dead thermal camera.
 
