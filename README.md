@@ -12,7 +12,9 @@ regression gate.
   - My native-encoder side-branch fusion lost to it on all 7 sites, and the gate blocked it.
   - Self-training beats distilling the 9B into the small head on F1. The 9B teacher only improves ranking.
 - **TriSAR-3D (RGB + thermal + LiDAR, unseen forest at night):**
-  - The 9B models are blind in the dark, and the LiDAR fast head is not.
+  - With thermal fused as a side branch, the 9B models are blind in the dark forest (F1 0.00). With thermal fed as its
+    own image, the 9B sees there for the first time (forest F1 0.33, precision 0.29). The LiDAR fast head stays the most
+    precise (0.37 at P 0.8).
   - A fused 9B trained with camera-dropout hallucinated 3,373 people. The same model without dropout reported none:
     the augmentation, not the extra sensors, taught the hallucination.
   - The best system pairs that fused 9B (posture, range) with a thermal-normalised LiDAR fast head: 0.49 over 3 seeds,
@@ -35,6 +37,7 @@ posture and range. This window was chosen as the forest's best; the forest's ove
 | VLM fine-tuned, RGB + thermal + LiDAR, 20 % camera-dropout | 0.17 | 0.11 | 0.00 | 0.79 |
 | VLM fine-tuned, RGB + thermal + LiDAR, **no camera-dropout** (2 seeds) | **0.26 / 0.25** | **0.17** | 0.00 | **0.82 / 0.80** |
 | VLM fine-tuned, RGB + thermal + LiDAR, 50 % camera-dropout | 0.24 | 0.16 | 0.00 | 0.76 |
+| **VLM fine-tuned, thermal as its own image** (no camera, no LiDAR) | **0.41** | **0.38** | **0.33** | **0.82** |
 | fast head, 12M (mean of 3 seeds, range) | 0.36 (0.30–0.40) | 0.33 (0.27–0.38) | **0.30 (0.24–0.36)** | 0.56 (0.55–0.57) |
 | combined: VLM (camera-dropout) + non-overlapping fast detections (3 seeds) | 0.42 (0.35–0.46) | 0.37 (0.31–0.42) | 0.30 (0.24–0.35) | 0.76 |
 | fast head + per-frame thermal normalisation (3 seeds) | 0.42 (0.37–0.45) | 0.39 (0.35–0.43) | **0.37 (0.31–0.42)** | 0.56 (0.56–0.57) |
@@ -67,7 +70,7 @@ What the runs show:
    The lesson: an augmentation that keeps labels the input no longer supports teaches a prior, and only an unseen
    site exposed it.
 3. **None of the TriSAR VLMs learned to use thermal or LiDAR.**
-   - Switching either sensor off, or feeding both from another frame, changes held-out-lab F1 by less than 0.03. This
+   - Switching either sensor off, or feeding both from another frame, changes held-out-lab F1 by less than 0.03 (on the 153 lab frames of the fixed 600-frame subset). This
      holds for all three fused runs, including the one without camera-dropout (thermal or LiDAR off: −0.013).
    - With the camera off, the VLM emits the same memorised box on every frame.
    - The fused features had large norms during training but carried no decision signal.

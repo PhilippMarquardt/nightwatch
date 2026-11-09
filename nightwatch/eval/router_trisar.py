@@ -90,7 +90,7 @@ def main():
     thr = json.load(open(f"{RUNS}/{fast_run}/train_summary.json"))["score_thr"]
     fast = load(f"{RUNS}/{fast_run}/pred_test.jsonl")
     res = {}
-    for slow_run in ["t_sft_rgb", "t_sft_fusion_l", "t_sft_fusion_l_cd50", "t_sft_fusion_l_cd0"]:
+    for slow_run in ["t_sft_rgb", "t_sft_fusion_l", "t_sft_fusion_l_cd50", "t_sft_fusion_l_cd0", "t_sft_thermal_i"]:
         p = f"{RUNS}/{slow_run}/pred_test.jsonl"
         if not os.path.exists(p):
             continue
