@@ -27,7 +27,16 @@ LYING_PROMPT = "Is anyone lying on the ground? Answer yes or no."
 NEAREST_PROMPT = "How far away is the nearest person, in metres? Answer with one number, or none if nobody is visible."
 COUNT_PROMPT = T.COUNT_PROMPTS[0]
 
+# Multi-image modes (2026-11-09 follow-up): every sensor enters the VLM's own ViT as a real image at the native
+# 640x512 thermal-frame resolution (20x16 = 320 merged tokens each). Side-branch fusion was ignored on TriSAR.
+MULTI = {"thermal_i": ("t",), "rgbt_i": ("rgb", "t"), "tri": ("rgb", "t", "l")}
+SENSOR_LABEL = {"rgb": "Visible camera:", "t": "Thermal camera:", "l": "LiDAR range image (near = red, far = blue, black = no return):"}
+MULTI_DROP = float(os.environ.get("NW_MULTI_DROP", "0.3"))   # P(exactly one sensor blacked out) for >= 2 sensors
+
 PREAMBLE = {
+    "thermal_i": "Sensors: thermal camera.",
+    "rgbt_i": "Sensors: visible camera and thermal camera, time-synchronised and pixel-aligned.",
+    "tri": "Sensors: visible camera, thermal camera and 128-beam LiDAR, time-synchronised and projected into one frame.",
     "rgb": "Sensors: visible camera.",
     "fusion": "Sensors: visible camera and thermal camera, time-synchronised and pixel-aligned. Fused sensor stream:",
     "fusion_l": ("Sensors: visible camera, thermal camera and 128-beam LiDAR, time-synchronised and projected into one "
@@ -104,8 +113,46 @@ def crop_persons(persons, crop, keep_vis=0.5):
 
 
 def messages(mode, prompt):
+    if mode in MULTI:
+        content = [{"type": "text", "text": PREAMBLE[mode]}]
+        for k in MULTI[mode]:
+            content += [{"type": "text", "text": SENSOR_LABEL[k]}, {"type": "image"}]
+        return [{"role": "user", "content": content + [{"type": "text", "text": prompt}]}]
     return [{"role": "user", "content": [{"type": "text", "text": PREAMBLE[mode]}, {"type": "image"},
                                          {"type": "text", "text": prompt}]}]
+
+
+_TURBO = None
+
+
+def _level_match(th):
+    """Per-frame thermal level match to the lab training distribution (median -> 135, p99.5 -> 235)."""
+    import numpy as _np
+    a = _np.asarray(th, dtype=_np.float32)
+    med, hi = _np.median(a), _np.percentile(a, 99.5)
+    return Image.fromarray(_np.clip(135 + (a - med) * (100.0 / max(hi - med, 1.0)), 0, 255).astype(_np.uint8))
+
+
+def lidar_image(li):
+    """LiDAR render (inv-range, intensity, hit) -> RGB image: 1/range through the turbo colormap, black = no return."""
+    global _TURBO
+    import numpy as _np
+    if _TURBO is None:
+        from matplotlib import cm
+        _TURBO = (cm.turbo(_np.linspace(0, 1, 256))[:, :3] * 255).astype(_np.uint8)
+    a = _np.asarray(li)
+    out = _TURBO[a[..., 0]]          # inv-range is already 0..255 (near = high = red end)
+    out[a[..., 2] == 0] = 0
+    return Image.fromarray(out)
+
+
+def sensor_images(mode, rgb, th, li):
+    """PIL images for a multi-image mode, in MULTI[mode] order, at the native 640x512 frame size."""
+    size = (FW, FH)
+    imgs = {"rgb": rgb.resize(size, Image.BILINEAR),
+            "t": _level_match(th.resize(size, Image.BILINEAR)).convert("RGB"),
+            "l": lidar_image(li.resize(size, Image.NEAREST))}
+    return [imgs[k] for k in MULTI[mode]]
 
 
 def _apply_cond(rgb, th, li, cond):
@@ -144,7 +191,12 @@ class TriSARSFT(Dataset):
             crop, wh = (x0, y0, x0 + cw, y0 + ch), (cw, ch)
             persons = crop_persons(persons, crop)
         rgb, th, li = load_triplet(self.dir, f["id"], crop)
-        if self.mode != "rgb":
+        if self.mode in MULTI:
+            sens = MULTI[self.mode]
+            if len(sens) >= 2 and rng.random() < MULTI_DROP:      # exactly one sensor off, never two
+                off = {"rgb": "rgb_off", "t": "thermal_off", "l": "lidar_off"}[rng.choice(sens)]
+                rgb, th, li = _apply_cond(rgb, th, li, off)
+        elif self.mode != "rgb":
             r = rng.random()
             d_rgb, d_t, d_l = self.drop
             if r < d_rgb:
@@ -156,7 +208,8 @@ class TriSARSFT(Dataset):
         task, prompt, answer = sample_task(persons, rng, wh)
         text = self.proc.apply_chat_template(messages(self.mode, prompt), add_generation_prompt=True, tokenize=False,
                                                enable_thinking=False)  # direct answers, no CoT preamble
-        enc = self.proc(text=[text], images=[rgb], return_tensors="pt")
+        images = sensor_images(self.mode, rgb, th, li) if self.mode in MULTI else [rgb]
+        enc = self.proc(text=[text], images=images, return_tensors="pt")
         ans = self.proc.tokenizer(answer, add_special_tokens=False)["input_ids"] + self.end_ids
         ids = torch.cat([enc["input_ids"][0], torch.tensor(ans)])
         labels = torch.cat([torch.full_like(enc["input_ids"][0], -100), torch.tensor(ans)])
@@ -184,4 +237,5 @@ class TriSARInfer(Dataset):
             rgb, th, li = _apply_cond(*load_triplet(self.dir, f["id"]), self.cond)
         text = self.proc.apply_chat_template(messages(self.mode, self.prompt), add_generation_prompt=True, tokenize=False,
                                                enable_thinking=False)  # direct answers, no CoT preamble
-        return {"id": f["id"], "text": text, "images": [rgb], "thermal": thermal_tensor(th), "lidar": lidar_tensor(li)}
+        images = sensor_images(self.mode, rgb, th, li) if self.mode in MULTI else [rgb]
+        return {"id": f["id"], "text": text, "images": images, "thermal": thermal_tensor(th), "lidar": lidar_tensor(li)}

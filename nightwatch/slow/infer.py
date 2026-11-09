@@ -77,7 +77,7 @@ def run(model, proc, fusion, recs, root, mode, task, cond, bs, workers, out_fh, 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="Qwen/Qwen3.5-9B")
-    ap.add_argument("--mode", choices=["rgb", "thermal", "dual", "fusion", "fusion_l"], required=True)
+    ap.add_argument("--mode", choices=["rgb", "thermal", "dual", "fusion", "fusion_l", "thermal_i", "rgbt_i", "tri"], required=True)
     ap.add_argument("--dataset", choices=["llvip", "trisar"], default="llvip")
     ap.add_argument("--fused-dir", default="data/trisar_fused")
     ap.add_argument("--adapter", default=None)
@@ -116,7 +116,9 @@ def main():
             for cond in a.conds.split(","):
                 if (a.mode == "rgb" and cond in ("thermal_off", "lidar_off")) or (a.mode == "fusion" and cond == "lidar_off") \
                         or (a.mode == "thermal" and cond in ("rgb_off", "lidar_off", "thermal_shuffle")) \
-                        or (a.mode == "rgb" and cond in ("thermal_shuffle", "sensors_shuffle")):
+                        or (a.mode == "rgb" and cond in ("thermal_shuffle", "sensors_shuffle")) \
+                        or (a.mode == "thermal_i" and cond in ("rgb_off", "lidar_off", "sensors_shuffle")) \
+                        or (a.mode == "rgbt_i" and cond == "lidar_off"):
                     continue
                 timings.append(run(model, proc, fusion, recs, a.root, a.mode, task, cond, a.bs, a.workers, fh, dev,
                                    a.dataset, a.fused_dir))

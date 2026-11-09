@@ -6,6 +6,7 @@
 #   bash scripts/pod.sh status            # GPU, tmux windows, recent log lines, finished runs
 #   bash scripts/pod.sh pull              # fetch results (runs/*.json*, report/) back to this machine
 set -euo pipefail
+if [ "${POD:-1}" = 2 ]; then NW_POD_HOST=${NW_POD_HOST:-root@POD2_IP}; NW_POD_PORT=${NW_POD_PORT:-POD2_PORT}; fi   # second pod (2026-11-09)
 HOST=${NW_POD_HOST:-root@POD1_IP}
 PORT=${NW_POD_PORT:-POD1_PORT}
 KEY=${NW_POD_KEY:-$HOME/.ssh/runpod_ed25519}

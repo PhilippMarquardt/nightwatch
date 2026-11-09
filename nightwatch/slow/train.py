@@ -27,7 +27,7 @@ from nightwatch.utils import RunLogger, gpu_mem_cap, seed_all
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="Qwen/Qwen3.5-9B")
-    ap.add_argument("--mode", choices=["rgb", "thermal", "dual", "fusion", "fusion_l"], required=True)
+    ap.add_argument("--mode", choices=["rgb", "thermal", "dual", "fusion", "fusion_l", "thermal_i", "rgbt_i", "tri"], required=True)
     ap.add_argument("--dataset", choices=["llvip", "trisar"], default="llvip")
     ap.add_argument("--fused-dir", default="data/trisar_fused")
     ap.add_argument("--root", default="data/raw/LLVIP")
