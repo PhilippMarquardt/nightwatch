@@ -10,7 +10,7 @@ Three questions drive every experiment:
 
 | | question | short answer |
 |---|---|---|
-| **Q1 Fusion** | How should a 9B VLM receive thermal and LiDAR so that it actually *uses* them? | Feed each sensor as its own image. A custom fusion branch lost on every site, and on TriSAR the VLM ignored it. |
+| **Q1 Fusion** | How should a 9B VLM receive thermal and LiDAR so that it actually *uses* them? | Feed thermal as its own image: that works where a custom fusion branch lost or was ignored. LiDAR fed as an image is still ignored; a native point-cloud encoder is the open test. |
 | **Q2 Distillation** | Can the VLM teach a small edge detector? | On familiar data, not better than self-training (F1 0.85 vs 0.86). On a truly new site, yes: F1 0.13 → 0.46 with no human labels. |
 | **Q3 New sites** | Does it hold up where it was never trained? | Partly. Unseen forest at night: 0.00 → 0.44 F1 once thermal enters as an image (the forest also guided development). Untouched harbour: 75 % of the gap to human labels closed. |
 

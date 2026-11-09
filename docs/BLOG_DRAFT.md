@@ -16,7 +16,7 @@ I set out to answer three questions:
 <table>
 <thead><tr><th></th><th>Question</th><th>Short answer</th></tr></thead>
 <tbody>
-<tr><td><b>Fusion</b></td><td>How should a 9B VLM receive thermal and LiDAR so that it actually uses them?</td><td>As extra images. My custom fusion branch lost on every site, and on the robot data the VLM ignored it.</td></tr>
+<tr><td><b>Fusion</b></td><td>How should a 9B VLM receive thermal and LiDAR so that it actually uses them?</td><td>Thermal as an extra image works, where my custom fusion branch lost or was ignored. LiDAR as an image is still ignored; a native point-cloud encoder is the open test.</td></tr>
 <tr><td><b>Distillation</b></td><td>Can the VLM teach a small edge detector?</td><td>On familiar data, no better than self-training. On a truly new site, yes: F1 0.13 → 0.46 without a single human label.</td></tr>
 <tr><td><b>New sites</b></td><td>Does it hold up where it was never trained?</td><td>Partly. In an unseen forest at night the VLM goes from blind (0.00) to 0.44. At an unseen harbour, 75 % of the gap to human labels is closed.</td></tr>
 </tbody>
