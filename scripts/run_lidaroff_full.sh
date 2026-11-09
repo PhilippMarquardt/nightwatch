@@ -9,8 +9,9 @@ if [ -n "${WAIT:-}" ]; then
 fi
 for r in $RUNS; do
   OUT=runs/$r
+  MODE=$(python -c "import json; print(json.load(open('$OUT/run_meta.json'))['config']['mode'])")
   [ -s $OUT/pred_test_lidaroff_full.jsonl ] || python -m nightwatch.slow.infer --dataset trisar --fused-dir data/trisar_fused \
-      --model Qwen/Qwen3.5-9B --bs 32 --workers 12 --mode tri --adapter $OUT --split test --tasks report --conds lidar_off \
+      --model Qwen/Qwen3.5-9B --bs 32 --workers 12 --mode $MODE --adapter $OUT --split test --tasks report --conds lidar_off \
       --out $OUT/pred_test_lidaroff_full.jsonl
   python -m nightwatch.eval.metrics_trisar --pred $OUT/pred_test_lidaroff_full.jsonl --out $OUT/pred_test_lidaroff_full_metrics.json > /dev/null
   python -m nightwatch.wandb_sync $OUT > /dev/null 2>&1 || true
