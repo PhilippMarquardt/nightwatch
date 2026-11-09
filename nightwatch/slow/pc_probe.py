@@ -16,7 +16,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from nightwatch.slow.pc_encode import CELL, GH, GW
+from nightwatch.slow.pc_encode import CELL, GH, GW, TH, TW
 
 FUSED, PC = "data/trisar_fused", "data/trisar_pc"
 
@@ -36,6 +36,15 @@ def cell_labels(persons):
                 if ix * iy >= 0.3 * CELL * CELL:
                     y[gy, gx] = 1
     return y.reshape(-1)
+
+
+def range_pixels(fid):
+    """Matched-capacity baseline: raw range-image pixels of each 32-px cell, 2x average-pooled to 16x16x3 = 768 values
+    (the range image is already dilated by 3 px, so little is lost), PCA'd later."""
+    a = np.asarray(Image.open(os.path.join(FUSED, f"{fid}_l.png")).convert("RGB"), np.float32) / 255.0
+    a = a.reshape(TH // 2, 2, TW // 2, 2, 3).mean((1, 3))
+    h = CELL // 2
+    return a.reshape(GH, h, GW, h, 3).transpose(0, 2, 1, 3, 4).reshape(GH * GW, h * h * 3).astype(np.float16)
 
 
 def range_stats(fid):
@@ -82,25 +91,45 @@ def main(max_train_frames=2500):
     print("frames with features:", len(frames), "train used", len(tr), {k: len(v) for k, v in te.items()}, flush=True)
 
     def build(fs):
-        U, B, Y = [], [], []
+        U, B, P, Y, H = [], [], [], [], []
         for f in fs:
             z = np.load(os.path.join(PC, f"{f['id']}.npz"))
             U.append(np.concatenate([z["feat"].astype(np.float32), np.log1p(z["count"].astype(np.float32))[:, None]], 1))
-            B.append(range_stats(f["id"])); Y.append(cell_labels(f["persons"]))
-        return np.concatenate(U), np.concatenate(B), np.concatenate(Y)
+            B.append(range_stats(f["id"])); P.append(range_pixels(f["id"])); Y.append(cell_labels(f["persons"]))
+            H.append(z["count"] > 0)
+        return np.concatenate(U), np.concatenate(B), np.concatenate(P), np.concatenate(Y), np.concatenate(H)
 
-    Utr, Btr, ytr = build(tr)
+    Utr, Btr, Ptr, ytr, _ = build(tr)
     tests = {k: build(v) for k, v in te.items()}
-    res = {"utonia": fit_eval(Utr, ytr, {k: (u, y) for k, (u, b, y) in tests.items()}),
-           "range_image_stats": fit_eval(Btr, ytr, {k: (b, y) for k, (u, b, y) in tests.items()}),
-           "both": fit_eval(np.concatenate([Utr, Btr], 1), ytr,
-                            {k: (np.concatenate([u, b], 1), y) for k, (u, b, y) in tests.items()})}
-    for name, r in res.items():
-        print(f"{name:18s} " + "  ".join(f"{k}: AP {v['ap']:.3f} (pos {v['pos_rate']:.3f}, n {v['n_cells']})" for k, v in r.items()))
-    gate = res["utonia"]["forest"]["ap"] >= res["range_image_stats"]["forest"]["ap"] + 0.05
-    print("V5 GATE (Utonia forest AP >= range-image AP + 0.05):", "PASS" if gate else "FAIL")
+    # matched-capacity baseline (review #20): range-image cell pixels, PCA to the Utonia feature width
+    q = min(Utr.shape[1], Ptr.shape[1])
+    Pm = torch.tensor(Ptr, dtype=torch.float32, device="cuda")
+    pmu = Pm.mean(0)
+    sub = Pm[torch.randperm(len(Pm), device="cuda")[:60000]] - pmu
+    _, _, Vp = torch.linalg.svd(sub, full_matrices=False)
+    Vp = Vp[:q].T
+    pca = lambda X: ((torch.tensor(X, dtype=torch.float32, device="cuda") - pmu) @ Vp).cpu().numpy()
+    Ptr_p = pca(Ptr); del Pm, sub
+    arms = {"utonia": (Utr, {k: t[0] for k, t in tests.items()}),
+            "range_image_stats": (Btr, {k: t[1] for k, t in tests.items()}),
+            f"range_image_pixels_pca{q}": (Ptr_p, {k: pca(t[2]) for k, t in tests.items()})}
+    res = {"all_cells": {}, "cells_with_return": {}}
+    for name, (Xtr, Xte) in arms.items():
+        res["all_cells"][name] = fit_eval(Xtr, ytr, {k: (Xte[k], tests[k][3]) for k in tests})
+        res["cells_with_return"][name] = fit_eval(Xtr, ytr, {k: (Xte[k][tests[k][4]], tests[k][3][tests[k][4]]) for k in tests})
+    for scope, rr in res.items():
+        print(f"--- {scope}")
+        for name, r in rr.items():
+            print(f"{name:26s} " + "  ".join(f"{k}: AP {v['ap']:.3f} (pos {v['pos_rate']:.3f}, n {v['n_cells']})" for k, v in r.items()))
+    best_base = max(v["forest"]["ap"] for n, v in res["all_cells"].items() if n != "utonia")
+    gate_pre = res["all_cells"]["utonia"]["forest"]["ap"] >= res["all_cells"]["range_image_stats"]["forest"]["ap"] + 0.05
+    gate_strict = res["all_cells"]["utonia"]["forest"]["ap"] >= best_base + 0.05
+    print("V5 GATE pre-registered (vs range-image stats + 0.05, forest):", "PASS" if gate_pre else "FAIL")
+    print("V5 strict (vs best baseline incl. matched-capacity pixels + 0.05):", "PASS" if gate_strict else "FAIL")
+    gate = gate_pre
     os.makedirs("runs/pc_probe", exist_ok=True)
-    json.dump({"results": res, "gate_pass": bool(gate), "train_frames": len(tr)}, open("runs/pc_probe/probe.json", "w"), indent=1)
+    json.dump({"results": res, "gate_pass": bool(gate_pre), "gate_strict": bool(gate_strict), "train_frames": len(tr)},
+              open("runs/pc_probe/probe.json", "w"), indent=1)
 
     # V4: PCA overlay for one forest and one lab test frame with people
     import matplotlib
