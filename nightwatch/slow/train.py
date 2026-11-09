@@ -27,7 +27,7 @@ from nightwatch.utils import RunLogger, gpu_mem_cap, seed_all
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="Qwen/Qwen3.5-9B")
-    ap.add_argument("--mode", choices=["rgb", "thermal", "dual", "fusion", "fusion_l", "thermal_i", "rgbt_i", "tri"], required=True)
+    ap.add_argument("--mode", choices=["rgb", "thermal", "dual", "fusion", "fusion_l", "thermal_i", "rgbt_i", "tri", "tri_pc"], required=True)
     ap.add_argument("--dataset", choices=["llvip", "trisar"], default="llvip")
     ap.add_argument("--fused-dir", default="data/trisar_fused")
     ap.add_argument("--root", default="data/raw/LLVIP")
@@ -41,6 +41,7 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--lr-enc", type=float, default=5e-5)
     ap.add_argument("--lr-fusion", type=float, default=2e-4)
+    ap.add_argument("--lr-pc", type=float, default=1e-3, help="tri_pc: lr of the point-cloud token projector (from scratch)")
     ap.add_argument("--lr-gate", type=float, default=1e-3)
     ap.add_argument("--lora-r", type=int, default=32)
     ap.add_argument("--warmup", type=int, default=30)
@@ -97,7 +98,9 @@ def main():
         print(f"vision LoRA lr x{vis_mult}: {sum(p.numel() for p in vis) / 1e6:.1f}M params", flush=True)
     else:
         groups = [{"params": [p for n, p in trainable], "lr": a.lr, "name": "lora"}]
-    if fusion is not None:
+    if fusion is not None and a.mode == "tri_pc":
+        groups += [{"params": list(fusion.parameters()), "lr": a.lr_pc, "name": "pc_proj", "weight_decay": 0.0}]
+    elif fusion is not None:
         enc = list(fusion.encoder.parameters())
         gates = [fusion.main.gate] + [p.gate for p in fusion.deep]
         gid = {id(p) for p in enc + gates}

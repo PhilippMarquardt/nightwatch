@@ -29,7 +29,9 @@ COUNT_PROMPT = T.COUNT_PROMPTS[0]
 
 # Multi-image modes (2026-11-09 follow-up): every sensor enters the VLM's own ViT as a real image at the native
 # 640x512 thermal-frame resolution (20x16 = 320 merged tokens each). Side-branch fusion was ignored on TriSAR.
-MULTI = {"thermal_i": ("t",), "rgbt_i": ("rgb", "t"), "tri": ("rgb", "t", "l")}
+MULTI = {"thermal_i": ("t",), "rgbt_i": ("rgb", "t"), "tri": ("rgb", "t", "l"), "tri_pc": ("rgb", "t", "l")}
+PC_DIR = os.environ.get("NW_PC_DIR", "data/trisar_pc")     # frozen Utonia token grids (nightwatch.slow.pc_encode)
+PC_DIM = 1225                                              # 1224 Utonia features + log(1 + points in cell)
 SENSOR_LABEL = {"rgb": "Visible camera:", "t": "Thermal camera:", "l": "LiDAR range image (near = red, far = blue, black = no return):"}
 MULTI_DROP = float(os.environ.get("NW_MULTI_DROP", "0.3"))   # P(exactly one sensor blacked out) for >= 2 sensors
 
@@ -37,6 +39,7 @@ PREAMBLE = {
     "thermal_i": "Sensors: thermal camera.",
     "rgbt_i": "Sensors: visible camera and thermal camera, time-synchronised and pixel-aligned.",
     "tri": "Sensors: visible camera, thermal camera and 128-beam LiDAR, time-synchronised and projected into one frame.",
+    "tri_pc": "Sensors: visible camera, thermal camera and 128-beam LiDAR, time-synchronised and projected into one frame.",
     "rgb": "Sensors: visible camera.",
     "fusion": "Sensors: visible camera and thermal camera, time-synchronised and pixel-aligned. Fused sensor stream:",
     "fusion_l": ("Sensors: visible camera, thermal camera and 128-beam LiDAR, time-synchronised and projected into one "
@@ -116,7 +119,8 @@ def messages(mode, prompt):
     if mode in MULTI:
         content = [{"type": "text", "text": PREAMBLE[mode]}]
         for k in MULTI[mode]:
-            content += [{"type": "text", "text": SENSOR_LABEL[k]}, {"type": "image"}]
+            lab = "LiDAR point-cloud tokens:" if (mode == "tri_pc" and k == "l") else SENSOR_LABEL[k]
+            content += [{"type": "text", "text": lab}, {"type": "image"}]
         return [{"role": "user", "content": content + [{"type": "text", "text": prompt}]}]
     return [{"role": "user", "content": [{"type": "text", "text": PREAMBLE[mode]}, {"type": "image"},
                                          {"type": "text", "text": prompt}]}]
@@ -155,6 +159,25 @@ def sensor_images(mode, rgb, th, li):
     return [imgs[k] for k in MULTI[mode]]
 
 
+def pc_grid(fid, crop=None, off=False):
+    """Utonia token grid for one frame -> (320, PC_DIM) float tensor, row-major 16x20 like the merged ViT tokens.
+    crop: the same (x0, y0, x1, y1) crop the images got; each output cell takes the source cell under its centre.
+    off: LiDAR switched off -> zero features and zero counts (every cell becomes "no return")."""
+    import numpy as _np
+    gh, gw = FH // 32, FW // 32
+    if off:
+        return torch.zeros(gh * gw, PC_DIM)
+    z = _np.load(os.path.join(PC_DIR, f"{fid}.npz"))
+    g = _np.concatenate([z["feat"].astype(_np.float32), _np.log1p(z["count"].astype(_np.float32))[:, None]], 1)
+    if crop is not None:
+        x0, y0, x1, y1 = crop
+        cx = x0 + (_np.arange(gw) + 0.5) * (x1 - x0) / gw
+        cy = y0 + (_np.arange(gh) + 0.5) * (y1 - y0) / gh
+        src = (_np.clip(cy // 32, 0, gh - 1).astype(int)[:, None] * gw + _np.clip(cx // 32, 0, gw - 1).astype(int)[None, :])
+        g = g[src.reshape(-1)]
+    return torch.from_numpy(g)
+
+
 def _apply_cond(rgb, th, li, cond):
     if cond == "rgb_off":
         rgb = Image.new("RGB", rgb.size)
@@ -191,11 +214,13 @@ class TriSARSFT(Dataset):
             crop, wh = (x0, y0, x0 + cw, y0 + ch), (cw, ch)
             persons = crop_persons(persons, crop)
         rgb, th, li = load_triplet(self.dir, f["id"], crop)
+        lidar_dropped = False
         if self.mode in MULTI:
             sens = MULTI[self.mode]
             if len(sens) >= 2 and rng.random() < MULTI_DROP:      # exactly one sensor off, never two
                 off = {"rgb": "rgb_off", "t": "thermal_off", "l": "lidar_off"}[rng.choice(sens)]
                 rgb, th, li = _apply_cond(rgb, th, li, off)
+                lidar_dropped = off == "lidar_off"
         elif self.mode != "rgb":
             r = rng.random()
             d_rgb, d_t, d_l = self.drop
@@ -217,7 +242,8 @@ class TriSARSFT(Dataset):
         if "mm_token_type_ids" in enc:      # transformers>=5.2x: M-RoPE needs per-token modality ids
             out["mm_token_type_ids"] = torch.cat([enc["mm_token_type_ids"][0], torch.zeros(len(ans), dtype=enc["mm_token_type_ids"].dtype)])
         return {**out, "input_ids": ids, "labels": labels, "pixel_values": enc["pixel_values"],
-                "image_grid_thw": enc["image_grid_thw"], "thermal": thermal_tensor(th), "lidar": lidar_tensor(li),
+                "image_grid_thw": enc["image_grid_thw"], "thermal": thermal_tensor(th),
+                "lidar": pc_grid(f["id"], crop, lidar_dropped) if self.mode == "tri_pc" else lidar_tensor(li),
                 "task": task}
 
 
@@ -230,12 +256,15 @@ class TriSARInfer(Dataset):
 
     def __getitem__(self, i):
         f = self.frames[i]
+        pc_id = f["id"]
         if self.cond == "sensors_shuffle":     # control: real thermal+LiDAR from another frame (misaligned)
             rgb = load_triplet(self.dir, f["id"])[0]
-            _, th, li = load_triplet(self.dir, self.frames[(i + len(self.frames) // 2) % len(self.frames)]["id"])
+            pc_id = self.frames[(i + len(self.frames) // 2) % len(self.frames)]["id"]
+            _, th, li = load_triplet(self.dir, pc_id)
         else:
             rgb, th, li = _apply_cond(*load_triplet(self.dir, f["id"]), self.cond)
         text = self.proc.apply_chat_template(messages(self.mode, self.prompt), add_generation_prompt=True, tokenize=False,
                                                enable_thinking=False)  # direct answers, no CoT preamble
         images = sensor_images(self.mode, rgb, th, li) if self.mode in MULTI else [rgb]
-        return {"id": f["id"], "text": text, "images": images, "thermal": thermal_tensor(th), "lidar": lidar_tensor(li)}
+        lid = pc_grid(pc_id, None, self.cond == "lidar_off") if self.mode == "tri_pc" else lidar_tensor(li)
+        return {"id": f["id"], "text": text, "images": images, "thermal": thermal_tensor(th), "lidar": lid}

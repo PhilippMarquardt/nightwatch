@@ -77,7 +77,7 @@ def run(model, proc, fusion, recs, root, mode, task, cond, bs, workers, out_fh, 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="Qwen/Qwen3.5-9B")
-    ap.add_argument("--mode", choices=["rgb", "thermal", "dual", "fusion", "fusion_l", "thermal_i", "rgbt_i", "tri"], required=True)
+    ap.add_argument("--mode", choices=["rgb", "thermal", "dual", "fusion", "fusion_l", "thermal_i", "rgbt_i", "tri", "tri_pc"], required=True)
     ap.add_argument("--dataset", choices=["llvip", "trisar"], default="llvip")
     ap.add_argument("--fused-dir", default="data/trisar_fused")
     ap.add_argument("--adapter", default=None)

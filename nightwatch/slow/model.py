@@ -137,6 +137,56 @@ class ThermalFusion(nn.Module):
         return dict(getattr(self, "_ratio", {}))
 
 
+class PCTokens(nn.Module):
+    """Mode tri_pc: the LiDAR image's 320 merged visual tokens are replaced by projected frozen Utonia features.
+    Cells without a LiDAR return (and LiDAR switched off) get a learned "no return" token. The LiDAR slot's deepstack
+    features are zeroed, so LiDAR reaches the LM only through these tokens. Token layout and M-RoPE positions are
+    unchanged from mode `tri` (the black range image stays as a placeholder)."""
+
+    def __init__(self, d_model: int, d_in: int = 1225, hidden: int = 1024, n_img: int = 3, slot: int = 2, n_tok: int = 320):
+        super().__init__()
+        self.proj = nn.Sequential(nn.LayerNorm(d_in), nn.Linear(d_in, hidden), nn.GELU(), nn.Linear(hidden, d_model))
+        self.no_return = nn.Parameter(torch.randn(d_model) * 0.02)
+        self.n_img, self.slot, self.n_tok = n_img, slot, n_tok
+        self.extra = {"lidar": None}           # train/infer pass the token grid via set_extra({"lidar": ...})
+        self._g, self._ratio = None, {}
+
+    def set_thermal(self, t):
+        pass
+
+    def set_extra(self, tensors: dict):
+        self._g = tensors.get("lidar")
+
+    def hook(self, module, args, output):
+        g = self._g
+        if g is None:
+            return output
+        po = output.pooler_output
+        B = g.shape[0]
+        per = self.n_img * self.n_tok
+        if po.shape[0] != B * per:
+            raise RuntimeError(f"tri_pc expects {B}x{per} visual tokens, got {po.shape[0]}")
+        tok = self.proj(g.to(next(self.proj.parameters()).dtype))                    # (B, 320, D)
+        empty = (g[..., -1] <= 0).unsqueeze(-1)                                      # log1p(count) == 0
+        tok = torch.where(empty, self.no_return.to(tok.dtype).expand_as(tok), tok).to(po.dtype)
+        po4 = po.view(B, self.n_img, self.n_tok, -1).clone()
+        self._ratio = {"pc_norm_ratio": float(tok.detach().float().norm(dim=-1).mean() / po4[:, :self.slot].detach().float().norm(dim=-1).mean().clamp(min=1e-6))}
+        po4[:, self.slot] = tok
+        output.pooler_output = po4.view_as(po)
+        deep = getattr(output, "deepstack_features", None)
+        if deep:
+            new = []
+            for d in deep:
+                d4 = d.view(B, self.n_img, self.n_tok, -1).clone()
+                d4[:, self.slot] = 0
+                new.append(d4.view_as(d))
+            output.deepstack_features = new
+        return output
+
+    def gate_values(self):
+        return dict(self._ratio)
+
+
 LIDAR_MEAN = torch.tensor([0.10, 0.20, 0.45]).view(3, 1, 1)
 LIDAR_STD = torch.tensor([0.15, 0.25, 0.50]).view(3, 1, 1)
 
@@ -174,6 +224,11 @@ def load_slow_head(model_path: str, mode: str, lora: dict | None = None, adapter
         extra = {"lidar": 3} if mode == "fusion_l" else None
         fusion = ThermalFusion(tc.hidden_size, n_deep, thermal_encoder, pretrained=adapter_dir is None,
                                extra_sensors=extra).to(device)
+        if adapter_dir:
+            fusion.load_state_dict(torch.load(os.path.join(adapter_dir, "fusion.pt"), map_location=device))
+        model.model.visual.register_forward_hook(fusion.hook)
+    if mode == "tri_pc":
+        fusion = PCTokens(model.config.text_config.hidden_size).to(device)
         if adapter_dir:
             fusion.load_state_dict(torch.load(os.path.join(adapter_dir, "fusion.pt"), map_location=device))
         model.model.visual.register_forward_hook(fusion.hook)
