@@ -4,7 +4,7 @@
 # Same recipe as cd0 (1 epoch, BS4/ACC4, lr defaults); sensors enter the ViT as real images at 640x512.
 set -uo pipefail
 cd "$(dirname "$0")/.."
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 MODE=${MODE:?set MODE}; SEED=${SEED:-0}
 TAG=$( [ "$SEED" = 0 ] && echo "" || echo "_s$SEED" )
 OUT=runs/t_sft_${MODE}${TAG}
