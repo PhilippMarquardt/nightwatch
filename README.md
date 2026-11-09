@@ -85,7 +85,7 @@ Two fusion designs were compared for the slow head:
   slice: per site, darkest 25 %, crowded, camera dead, thermal dead.
 - **Pre-registration.** The follow-up experiments had their success criteria and primary contrast written down
   before training. Anything decided after seeing results is labelled post hoc.
-- **Independent reviews.** An AI reviewer audited progress every 45 minutes; every finding was fixed, deferred or
+- **Independent reviews.** Independent AI code and plan reviews checked the work; every finding was fixed, deferred or
   rejected with a reason.
 
 Metric: person F1 at IoU 0.5 unless stated.

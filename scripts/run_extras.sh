@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Review-driven extras (Fable review, 2026-11-08). Resumable; each step skipped if its output exists.
+# Extra controls. Resumable; each step skipped if its output exists.
 #   stretch : test-time thermal contrast stretch on the TriSAR test set (hypothesis 2 for the forest failure:
 #             the forest is a thermal *distribution shift*, not an uninformative sensor)
 #   self    : self-training control for distillation (student trained on its own pseudo-labels)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Seeds 1 and 2 of the consensus student (review #4), after the seed lane is done so memory stays bounded.
+# Seeds 1 and 2 of the consensus student, after the seed lane is done so memory stays bounded.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True NW_GPU_FRAC=${NW_GPU_FRAC:-0.12} NW_FAST_CPU=1

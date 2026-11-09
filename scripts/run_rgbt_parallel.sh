@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Review #13: run rgbt_i in parallel with thermal_i on pod 1 once the morning evals are done; then mark it so the
+# run rgbt_i in parallel with thermal_i on pod 1 once the morning evals are done; then mark it so the
 # serial queue skips its copy (run_tri.sh checks STOP_<mode> only at start).
 cd "$(dirname "$0")/.."
 while ! grep -q CD0S1_DONE logs/cd0s1.log 2>/dev/null || ! grep -q DUAL_HALF_DONE logs/dualhalf.log 2>/dev/null; do sleep 60; done

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Review #9 confound control: fusion_l with NO camera-dropout (thermal/LiDAR dropout unchanged). Separates
+# confound control: fusion_l with NO camera-dropout (thermal/LiDAR dropout unchanged). Separates
 # "side-branch OOD causes forest hallucination" from "camera-dropout with kept targets taught black-camera => report people".
 # Starts when the dual SFT has finished training (its eval then runs beside this). STOP_cd0 cuts it.
 set -uo pipefail

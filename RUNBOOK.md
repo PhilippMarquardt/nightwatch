@@ -2,7 +2,7 @@
 
 ```bash
 # 1. ship code + pre-rendered TriSAR frames (from the Windows box)
-scp C:/Users/pmarq/source/repos/nightwatch_code.tgz C:/Users/pmarq/source/repos/trisar_fused.tgz user@gpu:~/
+scp nightwatch_code.tgz trisar_fused.tgz user@gpu:~/
 # 2. on the GPU box
 mkdir -p ~/nightwatch && cd ~/nightwatch && tar xzf ~/nightwatch_code.tgz && tar xzf ~/trisar_fused.tgz -C data/
 tmux new -s nw

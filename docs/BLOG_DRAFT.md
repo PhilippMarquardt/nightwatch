@@ -80,8 +80,8 @@ I compared two ways of giving the VLM its extra sensors:
 - **Same frames** for every compared row.
 - **A fail-closed regression gate**: a model ships only if it is no worse on any slice (per site, darkest 25 %,
   crowded, camera dead, thermal dead).
-- **Criteria written down before training** for the follow-up experiments, and AI reviewers auditing progress every
-  45 minutes. Anything decided after seeing results is labelled post hoc.
+- **Criteria written down before training** for the follow-up experiments, and independent AI reviews of the plan and
+  code. Anything decided after seeing results is labelled post hoc.
 
 ## 4. Fusion: how should the VLM see thermal and LiDAR?
 
@@ -287,5 +287,5 @@ daylight. Inserted persons are found with AUROC 0.70 (pixel baseline 0.52), crow
   the rest. Caught before training.
 - Before each control result arrived, I wrote down what outcome would count against the claim. The self-training
   control then overturned my distillation story.
-- Independent AI reviewers (Fable, Codex) checked the plan, the code and the live progress. Every finding was triaged:
+- Independent AI code and plan reviews checked the plan, the code and the live progress. Every finding was triaged:
   fixed, deferred or rejected with a reason.

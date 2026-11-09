@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Review #12: second seed of the no-camera-dropout fused TriSAR VLM (cd0). Same recipe as cd0 (BS4/ACC4, 1 epoch,
+# second seed of the no-camera-dropout fused TriSAR VLM (cd0). Same recipe as cd0 (BS4/ACC4, 1 epoch,
 # drop_rgb 0); train.py called directly so run_trisar.sh (live in cd0c) is not edited. Starts after CD0_DONE.
 set -uo pipefail
 cd "$(dirname "$0")/.."

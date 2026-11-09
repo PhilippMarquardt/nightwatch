@@ -93,7 +93,7 @@ def main(max_train_frames=2500):
     rng = np.random.default_rng(0)
     tr = [f for f in frames if f["split"] == "train"]
     tr = [tr[i] for i in sorted(rng.choice(len(tr), min(max_train_frames, len(tr)), replace=False))]
-    # Gate on the lab VALIDATION sequences (review Astra-pc: deciding on test AP would make the test set development data).
+    # Gate on the lab VALIDATION sequences (deciding on test AP would make the test set development data).
     # Test lab / forest are computed and saved but reported only as information, after the decision.
     te = {"val_lab": [f for f in frames if f["split"] == "val" and f["location"] == "lab"],
           "test_lab": [f for f in frames if f["split"] == "test" and f["location"] == "lab"],
@@ -110,7 +110,7 @@ def main(max_train_frames=2500):
 
     Utr, Btr, Ptr, ytr, _ = build(tr)
     tests = {k: build(v) for k, v in te.items()}
-    # matched-capacity baseline (review #20): range-image cell pixels, PCA to the Utonia feature width
+    # matched-capacity baseline: range-image cell pixels, PCA to the Utonia feature width
     q = min(Utr.shape[1], Ptr.shape[1])
     Pm = torch.tensor(Ptr, dtype=torch.float32, device="cuda")
     pmu = Pm.mean(0)
@@ -122,7 +122,7 @@ def main(max_train_frames=2500):
     arms = {"utonia": (Utr, {k: t[0] for k, t in tests.items()}),
             "range_image_stats": (Btr, {k: t[1] for k, t in tests.items()}),
             f"range_image_pixels_pca{q}": (Ptr_p, {k: pca(t[2]) for k, t in tests.items()}),
-            # control (review Astra-pc): point count alone, i.e. "is there a LiDAR return here and how dense"
+            # control: point count alone, i.e. "is there a LiDAR return here and how dense"
             "point_count_only": (Utr[:, -1:], {k: t[0][:, -1:] for k, t in tests.items()})}
     res = {"all_cells": {}, "cells_with_return": {}}
     for name, (Xtr, Xte) in arms.items():

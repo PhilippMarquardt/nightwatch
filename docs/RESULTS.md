@@ -187,7 +187,7 @@ Site memory: a JEPA-style latent predictor on LTDv2 (one harbour camera over 8 m
 Engineering notes:
 - Every comparison is same-subset, and regression gates fail closed.
 - Four leak and overwrite bugs were caught before they reached results.
-- Independent reviews (Fable, Astra) checked the work; every finding was triaged.
+- Independent AI code and plan reviews checked the work; every finding was triaged.
 
 ## Design (stage 1, LLVIP)
 

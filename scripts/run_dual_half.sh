@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Review #11: token-matched dual. Same recipe as sft_dual (BS2/ACC8, 2 epochs, 428 steps) but each image resized to
+# token-matched dual. Same recipe as sft_dual (BS2/ACC8, 2 epochs, 428 steps) but each image resized to
 # 672x544 (357 merged tokens each, ~714 total = the fused head's 720). Decides whether the side-branch fusion's only
 # remaining advantage (half the visual tokens) is real. Also runs the missing reasoning eval for full-res sft_dual.
 set -uo pipefail

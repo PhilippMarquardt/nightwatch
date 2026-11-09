@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One seed of the compute-matched labelled-only student (review #9: run seeds in parallel to fill the GPU gap).
+# One seed of the compute-matched labelled-only student.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True NW_GPU_FRAC=${NW_GPU_FRAC:-0.12} NW_FAST_CPU=1

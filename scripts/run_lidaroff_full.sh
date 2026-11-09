@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Full-test LiDAR-off scoring of three-image slow heads (review #18): is the tri > rgbt_i gain read from LiDAR at test time?
+# Full-test LiDAR-off scoring of three-image slow heads: is the tri > rgbt_i gain read from LiDAR at test time?
 #   WAIT="<log>:<marker>" RUNS="t_sft_tri t_sft_tri_s2" bash scripts/run_lidaroff_full.sh
 set -uo pipefail
 cd "$(dirname "$0")/.."
