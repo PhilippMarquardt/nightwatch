@@ -108,6 +108,7 @@ def main():
         groups += [{"params": enc, "lr": a.lr_enc, "name": "thermal_encoder"},
                    {"params": rest, "lr": a.lr_fusion, "name": "fusion"},
                    {"params": gates, "lr": a.lr_gate, "name": "gates", "weight_decay": 0.0}]
+    per_group = vis_mult != 1.0 or a.mode == "tri_pc"   # tri_pc: the from-scratch projector gets its own clip
     for g in groups:
         g["base_lr"] = g["lr"]
     opt = torch.optim.AdamW(groups, betas=(0.9, 0.95), weight_decay=0.01)
@@ -119,7 +120,7 @@ def main():
         n_train = sum(p.numel() for p in train_params)
         print(f"mode={a.mode} samples={len(ds)} steps={total} trainable={n_train/1e6:.1f}M", flush=True)
         cfg = {**vars(a), "vision_lora": bool(os.environ.get("NW_VISION_LORA")), "vis_lr_mult": vis_mult,
-               "clip_mode": "per_group" if vis_mult != 1.0 else "global", "multi_drop": os.environ.get("NW_MULTI_DROP", "0.3")}
+               "clip_mode": "per_group" if per_group else "global", "multi_drop": os.environ.get("NW_MULTI_DROP", "0.3")}
         log = RunLogger(a.out, cfg, use_wandb=(True if a.wandb else None), project="nightwatch")
 
     if ddp:
@@ -152,7 +153,7 @@ def main():
                 for p in train_params:
                     if p.grad is not None:
                         dist.all_reduce(p.grad, op=dist.ReduceOp.AVG)
-            if vis_mult != 1.0:   # clip LM and vision LoRA separately, so large ViT gradients do not shrink LM updates
+            if per_group:   # clip groups separately, so a new module's large gradients do not shrink LM updates
                 gns = [torch.nn.utils.clip_grad_norm_(g["params"], 1.0) for g in groups]
                 gn_groups = {f"grad_norm_{g['name']}": float(x) for g, x in zip(groups, gns)}
                 gn = torch.sqrt(sum(x.float() ** 2 for x in gns))
@@ -165,7 +166,7 @@ def main():
             opt.zero_grad(set_to_none=True)
             step += 1
             if rank == 0 and (step % 5 == 0 or step == 1):
-                rec = {"step": step, "loss": loss.item() * a.grad_accum, "grad_norm": float(gn), **(gn_groups if vis_mult != 1.0 else {}),
+                rec = {"step": step, "loss": loss.item() * a.grad_accum, "grad_norm": float(gn), **(gn_groups if per_group else {}),
                        "lr": opt.param_groups[0]["lr"], "elapsed_s": time.time() - t0,
                        "samples_per_s": step * a.grad_accum * a.bs * (dist.get_world_size() if ddp else 1) / (time.time() - t0)}
                 if fusion is not None:
