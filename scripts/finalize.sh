@@ -49,6 +49,7 @@ python -m nightwatch.report.thr_sweep || true
 python -m nightwatch.report.teacher_sites || true
 python -m nightwatch.report.fusion_vs_lum || true
 python -m nightwatch.report.worst_case || true
+python -m nightwatch.report.trisar_ladder || true
 python -m nightwatch.report.llvip_thr_sweep || true
 python -m nightwatch.report.make_report
 } >> logs/finalize.log 2>&1

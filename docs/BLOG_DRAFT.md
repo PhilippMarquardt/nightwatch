@@ -147,16 +147,18 @@ separate image (camera, thermal, and a colour-coded LiDAR range image), instead 
 
 <div class="table-wrap">
 <table>
-<thead><tr><th>TriSAR slow head (one seed)</th><th>All</th><th>Unseen forest</th><th>Forest precision</th><th>Held-out lab</th></tr></thead>
+<thead><tr><th>TriSAR slow head (one seed unless noted)</th><th>All</th><th>Unseen forest</th><th>Forest precision</th><th>Held-out lab</th></tr></thead>
 <tbody>
 <tr><td>Camera only</td><td>0.25</td><td>0.00</td><td>–</td><td>0.78</td></tr>
 <tr><td>Thermal fused as a side branch</td><td>0.26</td><td>0.00</td><td>–</td><td>0.82</td></tr>
 <tr><td>Thermal as an image</td><td>0.41</td><td>0.33</td><td>0.29</td><td>0.82</td></tr>
 <tr><td>Camera + thermal as images</td><td>0.48</td><td>0.39</td><td>0.39</td><td>0.86</td></tr>
-<tr><td><b>Camera + thermal + LiDAR as images</b></td><td><b>0.53</b></td><td><b>0.44</b></td><td><b>0.52</b></td><td>0.85</td></tr>
+<tr><td><b>Camera + thermal + LiDAR as images</b> (2 seeds)</td><td><b>0.52</b></td><td><b>0.44</b></td><td><b>0.49</b></td><td>0.84</td></tr>
 </tbody>
 </table>
 </div>
+
+![Sensor ladder](/nightwatch/fig_trisar_sensor_ladder.png)
 
 The 9B now sees people in the black forest for the first time. With the camera dead it still scores 0.82 in the lab,
 where every earlier TriSAR VLM scored 0.00, so it passes my first pre-registered criterion. It fails the other two:

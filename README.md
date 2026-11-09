@@ -37,7 +37,9 @@ posture and range. This window was chosen as the forest's best; that fast head's
 | VLM fine-tuned, RGB + thermal + LiDAR, 20 % camera-dropout | 0.17 | 0.11 | 0.00 | 0.79 |
 | VLM fine-tuned, RGB + thermal + LiDAR, **no camera-dropout** (2 seeds) | **0.26 / 0.25** | **0.17** | 0.00 | **0.82 / 0.80** |
 | VLM fine-tuned, RGB + thermal + LiDAR, 50 % camera-dropout | 0.24 | 0.16 | 0.00 | 0.76 |
-| **VLM fine-tuned, thermal as its own image** (no camera, no LiDAR) | **0.41** | **0.38** | **0.33** | **0.82** |
+| VLM fine-tuned, thermal as its own image (no camera, no LiDAR) | 0.41 | 0.38 | 0.33 | 0.82 |
+| VLM fine-tuned, camera + thermal as two images | 0.48 | 0.45 | 0.39 | 0.86 |
+| **VLM fine-tuned, camera + thermal + LiDAR as three images** (2 seeds) | **0.52 (0.51–0.53)** | **0.49** | **0.44 (0.43–0.44)** | **0.84** |
 | fast head, 12M (mean of 3 seeds, range) | 0.36 (0.30–0.40) | 0.33 (0.27–0.38) | **0.30 (0.24–0.36)** | 0.56 (0.55–0.57) |
 | combined: VLM (camera-dropout) + non-overlapping fast detections (3 seeds) | 0.42 (0.35–0.46) | 0.37 (0.31–0.42) | 0.30 (0.24–0.35) | 0.76 |
 | fast head + per-frame thermal normalisation (3 seeds) | 0.42 (0.37–0.45) | 0.39 (0.35–0.43) | **0.37 (0.31–0.42)** | 0.56 (0.56–0.57) |
@@ -88,6 +90,7 @@ What the runs show:
 5. **Escalating the VLM only on uncertain frames did not beat random escalation.** Fast-head doubt sits in the forest,
    where the VLM abstains. This is logged as a negative result.
 
+![Sensor ladder](docs/media/fig_trisar_sensor_ladder.png)
 ![Combined vs single heads](docs/media/fig_trisar_router.png)
 ![Accuracy vs compute](docs/media/fig_trisar_pareto.png)
 
