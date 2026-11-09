@@ -1,216 +1,265 @@
 # Night Watch: Camera, Thermal and LiDAR Perception After Dark
 
+A security robot does most of its work at night, at sites it has never seen. That breaks two habits of computer
+vision. The camera is the weakest sensor in the dark, and the usual test split shares locations with training.
 
-A security robot does most of its work at night, at sites it has never seen. That breaks two habits of computer vision. The camera is the weakest sensor in the dark, and the usual test split shares locations with training. This project builds a small version of a full multi-sensor perception stack and evaluates it only on held-out sites:
+Night Watch is a small, end-to-end version of the perception stack such a robot needs:
+- a **vision-language model as the slow head**: Qwen3.5-9B with LoRA, which reads every sensor and writes an incident
+  report per person (box, posture, distance in metres)
+- a **12M-parameter detector as the fast head**: it runs on every frame in 0.7 ms (TensorRT FP16) and learns from the
+  slow head
+- **evaluation only on sites the models never saw**, with regression gates that fail closed
 
-1. **Per-sensor encoders, fused into one token stream.** The camera goes through the VLM's own ViT. Thermal and LiDAR each get a DINOv3 ConvNeXt encoder whose features land on the same token grid.
-2. **A slow head**: Qwen3.5-9B with LoRA, which writes a JSON incident report per person (box, posture, distance in metres).
-3. **A fast head**: a 12M-parameter CenterNet on the raw 7-channel frame. It runs in 0.7 ms with TensorRT FP16 and learns from the slow head's labels on unlabeled sites.
-4. **Evaluation on unseen sites**: a forest at night, held-out lab sequences, sensor-failure conditions, per-site confidence intervals and regression gates that fail closed.
+I set out to answer three questions:
 
-Everything ran on one rented RTX PRO 6000 (96 GB) overnight, as two GPU lanes plus a seed lane, each with a memory cap.
+<div class="table-wrap">
+<table>
+<thead><tr><th></th><th>Question</th><th>Short answer</th></tr></thead>
+<tbody>
+<tr><td><b>Fusion</b></td><td>How should a 9B VLM receive thermal and LiDAR so that it actually uses them?</td><td>As extra images. My custom fusion branch lost on every site, and on the robot data the VLM ignored it.</td></tr>
+<tr><td><b>Distillation</b></td><td>Can the VLM teach a small edge detector?</td><td>On familiar data, no better than self-training. On a truly new site, yes: F1 0.13 → 0.46 without a single human label.</td></tr>
+<tr><td><b>New sites</b></td><td>Does it hold up where it was never trained?</td><td>Partly. In an unseen forest at night the VLM goes from blind (0.00) to 0.44. At an unseen harbour, 75 % of the gap to human labels is closed.</td></tr>
+</tbody>
+</table>
+</div>
 
 <video src="/nightwatch/demo_forest_best.mp4" controls muted loop playsinline preload="metadata"></video>
 
-*An unseen forest at night. Left: the camera is almost black. Middle: thermal with LiDAR coloured by range, and the ground truth in white. Right: the system's output. The VLM reports "nobody visible", and the LiDAR-driven fast head finds both people with posture and range. This is the forest's best window; the forest's overall F1 is 0.31.*
+*An unseen forest at night. Left: the camera is almost black. Middle: thermal with LiDAR coloured by range, and the
+ground truth in white. Right: the system's output. This is the forest's best window for the fast head; its overall
+forest F1 is 0.31.*
+
+## 1. Three datasets, each split by place or time
+
+<div class="table-wrap">
+<table>
+<thead><tr><th></th><th>LLVIP</th><th>TriSAR-3D</th><th>LTDv2</th></tr></thead>
+<tbody>
+<tr><td>Sensors</td><td>camera + thermal</td><td>camera + thermal + 128-beam LiDAR</td><td>thermal only</td></tr>
+<tr><td>Scene</td><td>street surveillance cameras at night</td><td>a robot sensor rig: indoor lab, outdoor forest</td><td>one fixed harbour camera in Denmark</td></tr>
+<tr><td>Resolution</td><td>1280×1024</td><td>640×512, all sensors rendered into the thermal view</td><td>384×288, people ~16–19 px tall</td></tr>
+<tr><td>Labels</td><td>person boxes</td><td>3D person boxes with posture and range</td><td>person boxes</td></tr>
+<tr><td>My split</td><td>by scene: train 01–07, test 19–24 and 26</td><td>by sequence: train in the lab, test the whole night forest + 2 held-out lab sequences</td><td>by time: adapt on May 2020, test on March–April 2021</td></tr>
+<tr><td>Size</td><td>3,438 labelled, 8,164 unlabelled, 3,463 test</td><td>9,832 frames; test 2,751 (forest 2,119)</td><td>2,000 unlabelled adaptation frames; test 15,925 frames in 142 clips</td></tr>
+</tbody>
+</table>
+</div>
+
+![The three datasets as the models see them, with ground-truth person boxes](/nightwatch/fig_datasets.png)
+
+The official LLVIP and TriSAR splits put frames from the same place into train and test, which leaks near-duplicates.
+I re-split both by site or sequence. In LLVIP I hide the labels of sites 08–18 and treat them as "field data" that the
+VLM labels for the small detector. For TriSAR I render everything into the thermal camera's view: RGB is warped in by
+homography (the cameras are 10 cm apart, so parallax stays under one token), LiDAR is z-buffered into range,
+intensity and hit channels, and the 3D boxes become 2D boxes that keep posture and metric range.
+
+## 2. The system
 
 ![System diagram](/nightwatch/architecture.png)
 
-## 1. Data: two datasets, both split by site
+The slow head is Qwen3.5-9B with LoRA. It only ever sees human labels from the training sites. The fast head is a
+CenterNet (ResNet18-FPN, 12M parameters) without NMS; it learns from human labels plus the slow head's labels on
+unlabelled data, and only uncertain frames escalate to the slow head.
 
-**LLVIP** has 15,488 aligned visible/thermal frames from street cameras at night. I split it by scene, not by frame:
+I compared two ways of giving the VLM its extra sensors:
+1. **Side branch.** A DINOv3 encoder per extra sensor, whose features are added onto the VLM's visual tokens through
+   projections initialised to zero. At step 0 the model is exactly the pretrained VLM, and the token budget is the
+   same as camera alone. (My first version used a tanh gate initialised to zero instead. It starved the projection of
+   gradient, and a logged contribution ratio caught that early.)
+2. **Sensors as images.** Thermal (level-matched per frame) and LiDAR (1/range through a turbo colormap) go into the
+   VLM's own image encoder as extra images. More tokens, no new modules.
+
+## 3. How I measured
+
+- **Unseen places only.** No test site, sequence or month was used for training, thresholds or model choice.
+- **Intervals from resampling whole sites, sequences or clips.** Frames from one camera are correlated, so
+  frame-level intervals are far too narrow.
+- **Three seeds** wherever results move with the seed; single-seed rows say so.
+- **Same frames** for every compared row.
+- **A fail-closed regression gate**: a model ships only if it is no worse on any slice (per site, darkest 25 %,
+  crowded, camera dead, thermal dead).
+- **Criteria written down before training** for the follow-up experiments, and AI reviewers auditing progress every
+  45 minutes. Anything decided after seeing results is labelled post hoc.
+
+## 4. Fusion: how should the VLM see thermal and LiDAR?
+
+### LLVIP: camera + thermal
+
+1,500 frames from the 7 test sites:
 
 <div class="table-wrap">
 <table>
-<thead><tr><th>Split</th><th>Scenes</th><th>Frames</th><th>Used for</th></tr></thead>
+<thead><tr><th>Qwen3.5-9B</th><th>F1</th><th>95 % site CI</th><th>Camera dead</th><th>Thermal dead</th></tr></thead>
 <tbody>
-<tr><td>Labelled</td><td>01–07</td><td>3,438</td><td>slow-head fine-tuning (the only human labels it sees)</td></tr>
-<tr><td>Val</td><td>25</td><td>423</td><td>checkpoint and threshold selection</td></tr>
-<tr><td>Unlabeled</td><td>08–18</td><td>8,164</td><td>"field data": the slow head labels it, the fast head learns from it</td></tr>
-<tr><td>Test</td><td>19–24, 26</td><td>3,463</td><td>unseen sites, reporting only</td></tr>
+<tr><td>Zero-shot, camera</td><td>0.839</td><td>0.80–0.88</td><td>0.00</td><td>n/a</td></tr>
+<tr><td>Zero-shot, camera + thermal as two images</td><td>0.696</td><td>0.64–0.78</td><td>0.20</td><td>0.83</td></tr>
+<tr><td>Fine-tuned, camera only</td><td>0.882</td><td>0.83–0.92</td><td>0.00</td><td>n/a</td></tr>
+<tr><td>Fine-tuned, thermal only</td><td>0.923</td><td>0.89–0.95</td><td>n/a</td><td>0.00</td></tr>
+<tr><td>Fine-tuned, my side-branch fusion</td><td>0.894</td><td>0.87–0.93</td><td>0.80</td><td>0.88</td></tr>
+<tr><td>Fine-tuned, two images, same token budget as the side branch</td><td>0.928</td><td>0.90–0.94</td><td>0.91</td><td>0.88</td></tr>
+<tr><td><b>Fine-tuned, two images</b></td><td><b>0.937</b></td><td>0.92–0.95</td><td><b>0.93</b></td><td><b>0.89</b></td></tr>
 </tbody>
 </table>
 </div>
 
-**TriSAR-3D** (TU Darmstadt, CC-BY-4.0, October 2026) has 19.7k synchronised frames from a 128-beam LiDAR, an RGB camera and a thermal camera. It comes with 3D person boxes and posture tags (standing, walking, sitting, lying). I render everything into the thermal camera's view:
-- RGB is warped in by homography; the cameras are 10 cm apart, so residual parallax stays under one token.
-- LiDAR is z-buffered into inverse-range, intensity and hit-mask channels.
-- The 3D boxes become tight 2D boxes that keep posture and metric range.
+I expected my fused model to win. It did not. The winner is the simplest baseline: fine-tune the VLM on the camera
+and thermal frames as two separate images. It beats my side branch by 0.043 on all 7 sites, and keeps working when
+either camera dies. At an equal token budget my side branch still loses on all 7 sites (0.894 vs 0.928). Zero-shot,
+the same two-image input was the worst model of all (0.696), because it counted people twice. That zero-shot number
+is why I built the side branch in the first place, and fine-tuning removed the problem.
 
-The official split is frame-level inside sequences, which leaks near-duplicates. My test set is instead the whole forest (four night sequences the model never sees) plus two held-out lab sequences.
-
-## 2. Fusion that starts as the pretrained model
-
-Thermal and LiDAR features are added onto the VLM's 2×2-merged visual tokens through projections whose last layer is initialised to zero. At step 0 the model is exactly the pretrained VLM, and the token budget is the same as RGB alone. My first version used a tanh gate initialised to zero instead. It starved the projection of gradient and the model never used thermal, which a logged contribution ratio caught early.
-
-## 3. LLVIP: does fusion beat the best single sensor?
-
-On 1,500 frames from the 7 test sites, with confidence intervals from resampling whole sites (frames from one camera are correlated, so frame-level intervals are far too narrow). Every model saw the same frames and the same fine-tuning recipe:
-
-<div class="table-wrap">
-<table>
-<thead><tr><th>Qwen3.5-9B + LoRA</th><th>F1</th><th>95 % site CI</th><th>Darkest 25 %</th><th>Camera dead</th><th>Thermal dead</th></tr></thead>
-<tbody>
-<tr><td>Zero-shot, RGB</td><td>0.839</td><td>0.80–0.88</td><td>0.832</td><td>0.00</td><td>n/a</td></tr>
-<tr><td>Zero-shot, thermal as a second image</td><td>0.696</td><td>0.64–0.78</td><td>–</td><td>0.20</td><td>0.83</td></tr>
-<tr><td>Fine-tuned, RGB only</td><td>0.882</td><td>0.83–0.92</td><td>0.820</td><td><b>0.00</b></td><td>n/a</td></tr>
-<tr><td><b>Fine-tuned, thermal only</b> (thermal fed as the image)</td><td><b>0.923</b></td><td>0.89–0.95</td><td>0.891</td><td>n/a</td><td><b>0.00</b></td></tr>
-<tr><td>Fine-tuned, thermal fused onto the RGB tokens</td><td>0.894</td><td>0.87–0.93</td><td><b>0.902</b></td><td><b>0.80</b></td><td><b>0.88</b></td></tr>
-<tr><td>Brightness router (fused head if dark, RGB-only if bright)</td><td>0.910</td><td>0.89–0.94</td><td>0.902</td><td>–</td><td>–</td></tr>
-<tr><td><b>Fine-tuned, RGB and thermal as two images</b> (2× tokens)</td><td><b>0.937</b></td><td>0.92–0.95</td><td><b>0.916</b></td><td><b>0.93</b></td><td><b>0.89</b></td></tr>
-</tbody>
-</table>
-</div>
-
-I expected my fused model to win. It did not. The winner is the simplest baseline: fine-tune the VLM on the RGB and thermal frames as two separate images. It reaches 0.937, ahead of thermal-only (+0.013, 6 of 7 sites), RGB-only (+0.055, 7 of 7) and my side-branch fusion (+0.043, 7 of 7). It also keeps working when either camera dies (0.93 without the RGB camera, 0.89 without thermal). Zero-shot, the same two-image input was the worst model of all (0.696), because it counted people twice. That zero-shot number is why I built the side branch in the first place, and fine-tuning removed the problem.
-
-My side-branch fusion keeps the RGB token budget and does survive either sensor failing (worst case 0.80, where both single-sensor models drop to 0). I gave it one last chance: a two-image model at half resolution, with the same visual-token budget as mine. It still won on all 7 sites (0.928 vs 0.894) and in the worst case (0.88 vs 0.80). My fail-closed regression gate blocked the fused model against every stronger baseline. That is the part I would bring to a fusion team on day one: a gate that refuses its author's favourite model.
+My fail-closed regression gate blocked the fused model against every stronger baseline. That is the part I would
+bring to a fusion team on day one: a gate that refuses its author's favourite model.
 
 ![Average vs worst case](/nightwatch/fig_llvip_worst_case.png)
 
 Two details made this concrete:
-- **The fusion gain tracks darkness.** Against RGB-only, it is +0.13 on the darkest site and about −0.035 on the two brightest. The gate blocked the fused head for those two bright sites. A router that sends dark frames to the fused head (threshold: the median brightness of the *training* frames) gets 0.910 and passes the gate. I designed it after seeing the per-site pattern, so I count it as exploratory.
-- **The model uses thermal spatially.** Feed it thermal from a *different* frame and it drops to 0.53, far below simply switching thermal off (0.88). A misaligned thermal camera is more dangerous than a dead one, so a production stack needs a cross-sensor consistency check.
+- **The fusion gain tracks darkness.** Against camera-only it is +0.13 on the darkest site and about −0.035 on the
+  two brightest.
+- **The model uses thermal spatially.** Feed it thermal from a *different* frame and it drops to 0.53, far below
+  simply switching thermal off (0.88). A misaligned thermal camera is more dangerous than a dead one.
 
 ![Fusion gain vs scene brightness](/nightwatch/fig_llvip_fusion_vs_lum.png)
 
-## 4. LLVIP: distilling the VLM into the fast head
-
-The fused VLM labelled 8,164 frames from 11 sites whose labels I withheld. A 12M fast head then trained on them. Two controls decide what that proves. **Self-training**: the small head labels the same frames itself. **Compute-matched**: the labelled-only head trained for as many steps. Full test set (3,463 frames, 7 unseen sites); mean and range over three seeds where I have them:
+### TriSAR-3D: camera + thermal + LiDAR, lab-trained, tested in a forest at night
 
 <div class="table-wrap">
 <table>
-<thead><tr><th>12M fast head, labels on the 11 extra sites</th><th>F1</th><th>AP50</th></tr></thead>
+<thead><tr><th>Qwen3.5-9B</th><th>Seeds</th><th>All</th><th>Unseen forest</th><th>Held-out lab</th><th>Lab, camera dead</th></tr></thead>
 <tbody>
-<tr><td>none (7 labelled sites only)</td><td>0.82 (0.81–0.83)</td><td>0.87</td></tr>
-<tr><td>none, trained for as many steps (compute-matched)</td><td>0.84 (0.83–0.86)</td><td>0.89</td></tr>
-<tr><td>its own labels (self-training)</td><td><b>0.86 (0.86–0.86)</b></td><td>0.89</td></tr>
-<tr><td>VLM labels</td><td>0.83 (0.83–0.84)</td><td><b>0.91</b></td></tr>
-<tr><td>VLM labels, kept where the small head agrees</td><td>0.85 (0.83–0.87)</td><td><b>0.91</b></td></tr>
-<tr><td>human labels (oracle)</td><td>0.86</td><td>0.91</td></tr>
-</tbody>
-</table>
-</div>
-
-The self-training control is the most useful number in this project. Labelling the extra sites closes the gap to the human-label oracle, but the small head's own labels do it as well as the 9B teacher's: +0.03 over labelled-only on 7 of 7 sites, in two seeds. Some of it is just extra training steps. A labelled-only head trained for as many steps gets 0.844 on average, so the self-labelled data adds about +0.015 beyond that, significant on two of three seeds.
-
-The teacher's labels still carry something. Every VLM-labelled student ranks detections as well as the oracle (AP50 0.91 vs 0.89 for self-training). But its operating point, the score threshold tuned on a one-site validation set, does not transfer, so F1 doesn't show it. The teacher's own labels on those sites are F1 0.82 against the withheld ground truth, and at two bright, tree-lined sites it boxes street lamps and foliage as people. On easy pedestrians, that is no better than what the small head already knows. A VLM teacher should pay off where the small model is weak: posture, range and unfamiliar sites, not LLVIP boxes.
-
-![Teacher label quality per site](/nightwatch/fig_llvip_teacher_sites.png)
-
-## 5. TriSAR-3D: the forest at night
-
-This is where it got interesting. Person F1 on 2,751 held-out frames:
-
-<div class="table-wrap">
-<table>
-<thead><tr><th>System</th><th>All</th><th>Unseen forest</th><th>Held-out lab</th></tr></thead>
-<tbody>
-<tr><td>VLM fine-tuned, RGB only</td><td>0.25</td><td>0.00</td><td>0.78</td></tr>
-<tr><td>VLM fine-tuned, RGB + thermal + LiDAR, 20 % camera-dropout</td><td>0.17</td><td>0.00</td><td>0.79</td></tr>
-<tr><td>VLM fine-tuned, RGB + thermal + LiDAR, no camera-dropout</td><td><b>0.26</b></td><td>0.00</td><td><b>0.82</b></td></tr>
-<tr><td>… with camera-dropout 0.5</td><td>0.24</td><td>0.00</td><td>0.76</td></tr>
-<tr><td>Fast head, 12M (mean of 3 seeds, range)</td><td>0.36 (0.30–0.40)</td><td>0.30 (0.24–0.36)</td><td>0.56</td></tr>
-<tr><td>Fast head + thermal normalisation (3 seeds)</td><td>0.42 (0.37–0.45)</td><td><b>0.37 (0.31–0.42)</b></td><td>0.56</td></tr>
-<tr><td>RGB-only VLM + normalised fast head, combined (3 seeds)</td><td>0.48 (0.44–0.51)</td><td>0.37 (0.31–0.42)</td><td>0.78</td></tr>
-<tr><td><b>Fused VLM (no dropout) + normalised fast head, combined</b> (3 seeds)</td><td><b>0.49 (0.45–0.52)</b></td><td>0.37 (0.31–0.42)</td><td><b>0.81</b></td></tr>
-</tbody>
-</table>
-</div>
-
-In the black forest (2,119 frames), the RGB-only VLM reports 6 people: it sees nothing and says so. My first fused VLM reported **3,373**, nearly all wrong. I blamed the new thermal and LiDAR branches. A reviewer pointed out that this run also trained with 20 % camera-dropout, keeping the lab people as targets on black frames. So I trained the same fused model without camera-dropout. It reported **zero** people in the forest, and on one seed it became the best TriSAR slow head (held-out lab 0.82 vs 0.78 for RGB-only). But it barely uses its extra sensors either, so that gain is not fusion. The augmentation taught "black camera ⇒ there are people", and only an unseen site exposed it. Why 50 % dropout hallucinates far less (39 reports) than 20 % is a question I have not answered yet.
-
-None of the TriSAR VLMs learned to use thermal or LiDAR, including the one trained without camera-dropout (thermal or LiDAR off costs it 0.013 lab F1). Switching either off, or feeding both from another frame, changes held-out-lab F1 by less than 0.03; with the camera off, the model emits the same memorised box on every frame. On LLVIP the same design does use thermal (0.80 with the camera off), so this is a training problem, not an architecture limit: one epoch on 6k frames, two new encoders at once, and a camera that was already enough on the lab training frames.
-
-Abstention is what makes the two heads composable. The combined output keeps the VLM's persons (with posture and range) and adds fast-head detections that do not overlap them. On every one of six fast-head variants it gains +0.054 to +0.066 F1 over the fast head alone, even though the fast head's own level varies a lot by seed (0.30–0.40, and lab validation does not predict which seed holds up in the forest). With the hallucinating VLM, the same combination is *worse* than the fast head alone (0.32 vs 0.37).
-
-The fast head runs on LiDAR: switching LiDAR off drops it from 0.37 to 0.22, and switching the camera off changes nothing. Building a per-frame thermal level match into its training and inference made thermal a second sensor it actually uses. Forest F1 went 0.30 → 0.37 on average, with overlapping seed ranges. With LiDAR off, every normalised seed beat every plain one (0.26–0.31 vs 0.19–0.24).
-
-![Combined vs single heads](/nightwatch/fig_trisar_router.png)
-
-![Accuracy vs compute](/nightwatch/fig_trisar_pareto.png)
-
-## 6. Things that did not work, and what that taught me
-
-- **Uncertainty escalation where the slow head is blind.** On LLVIP, sending the 20 % most uncertain frames to the VLM recovers 61 % of the fast→slow gap (random frames: 28 %). On TriSAR the same rule was *worse* than random, because the fast head is unsure exactly where the VLM cannot see. Routing has to know which head is trustworthy for the scene, not just how unsure the fast head is.
-- **Single seeds.** One consensus-student seed gave 0.866 and looked like "the student matches the oracle"; another gave 0.830. One thermal-normalisation seed gave forest 0.42, another 0.31. Every claim above uses three seeds or a paired site bootstrap.
-- **Site-memory events I defined by hand.** The "person at the water's edge" region was wrong and fired on almost every frame. I excluded those numbers.
-
-## 7. In progress: every sensor as an image, and a genuinely new site
-
-*This section is updated as the follow-up experiments finish. Every number here is from a finished run; anything still
-running is labelled.* After the overnight results I wrote a new plan, had it reviewed independently by two AI reviewers
-(both said "modify"), and fixed the success criteria before training. Two GPUs run it.
-
-**Track A: can the 9B learn to use thermal and LiDAR?** Every sensor goes into the VLM's own image encoder as a
-separate image (camera, thermal, and a colour-coded LiDAR range image), instead of the side branch it ignored.
-
-<div class="table-wrap">
-<table>
-<thead><tr><th>TriSAR slow head (one seed unless noted)</th><th>All</th><th>Unseen forest</th><th>Forest precision</th><th>Held-out lab</th></tr></thead>
-<tbody>
-<tr><td>Camera only</td><td>0.25</td><td>0.00</td><td>–</td><td>0.78</td></tr>
-<tr><td>Thermal fused as a side branch</td><td>0.26</td><td>0.00</td><td>–</td><td>0.82</td></tr>
-<tr><td>Thermal as an image</td><td>0.41</td><td>0.33</td><td>0.29</td><td>0.82</td></tr>
-<tr><td>Camera + thermal as images</td><td>0.48</td><td>0.39</td><td>0.39</td><td>0.86</td></tr>
-<tr><td><b>Camera + thermal + LiDAR as images</b> (2 seeds)</td><td><b>0.52</b></td><td><b>0.44</b></td><td><b>0.49</b></td><td>0.84</td></tr>
+<tr><td>Zero-shot, camera (600-frame subset)</td><td>1</td><td>0.07</td><td>0.00</td><td>0.26</td><td>–</td></tr>
+<tr><td>Fine-tuned, camera only</td><td>1</td><td>0.25</td><td>0.00</td><td>0.78</td><td>0.00</td></tr>
+<tr><td>Fine-tuned, side-branch fusion of thermal + LiDAR</td><td>2</td><td>0.26</td><td>0.00</td><td>0.81</td><td>0.00</td></tr>
+<tr><td>Fine-tuned, thermal as an image</td><td>1</td><td>0.41</td><td>0.33</td><td>0.82</td><td>n/a</td></tr>
+<tr><td>Fine-tuned, camera + thermal as images</td><td>1</td><td>0.48</td><td>0.39</td><td><b>0.86</b></td><td>0.78</td></tr>
+<tr><td><b>Fine-tuned, camera + thermal + LiDAR as images</b></td><td>2</td><td><b>0.52</b></td><td><b>0.44</b></td><td>0.84</td><td><b>0.79</b></td></tr>
 </tbody>
 </table>
 </div>
 
 ![Sensor ladder](/nightwatch/fig_trisar_sensor_ladder.png)
 
-The 9B now sees people in the black forest for the first time. With the camera dead it still scores 0.82 in the lab,
-where every earlier TriSAR VLM scored 0.00, so it passes my first pre-registered criterion. It fails the other two:
-- **LiDAR is ignored.** Switching LiDAR off changes nothing (−0.004); thermal does the work (thermal off: forest
-  0.43 → 0.15).
-- **Precision is 0.60**, below my 0.70 bar.
+**As a side branch, thermal and LiDAR were ignored.** Switching either off changed held-out-lab F1 by less than 0.03,
+and with the camera off the model emitted the same memorised box on every frame. **As images, the same thermal data
+lets the VLM see people in the black forest for the first time.**
 
-My hypothesis is the frozen image encoder: it was pretrained on photos, and nothing taught it to read a colour-coded
-range image. A run with the vision encoder adapted too (LoRA on all 27 ViT blocks) is training now, with "LiDAR off
-must cost ≥ 0.03" fixed as its test in advance. Second seeds of the three-image and camera + thermal models are
-running too, because one seed is not enough to call a +0.05 difference.
-
-**Track B: a real new site.** The forest was not really "new" any more: I had tuned against it. So the LLVIP
-thermal fast head is dropped onto LTDv2, a harbour thermal camera in another country, at another resolution, tested on
-months a year after the adaptation month. One unlabelled month of frames gets labelled, and the fast head fine-tunes
-on those labels for the same number of steps in every arm. Three seeds per arm (mean):
+Before training the three-image model I wrote down three criteria:
 
 <div class="table-wrap">
 <table>
-<thead><tr><th>Labels for the new site's first month</th><th>F1 a year later</th><th>AP50</th></tr></thead>
+<thead><tr><th>Criterion</th><th>Bar</th><th>Result (2 seeds)</th></tr></thead>
 <tbody>
-<tr><td>None (zero-shot)</td><td>0.13</td><td>0.07</td></tr>
-<tr><td>None, same extra training on the home data</td><td>0.14</td><td>0.07</td></tr>
-<tr><td>The fast head's own labels (self-training)</td><td>0.14</td><td>0.09</td></tr>
-<tr><td>Only boxes both 9B and fast head agree on</td><td>0.23</td><td>0.22</td></tr>
-<tr><td><b>The thermal 9B's labels</b></td><td><b>0.46</b> (0.45–0.47)</td><td><b>0.37</b></td></tr>
-<tr><td>Human labels (upper bound)</td><td>0.57</td><td>0.52</td></tr>
+<tr><td>Works with the camera dead</td><td>lab F1 ≥ 0.50</td><td><b>pass</b>: 0.82 / 0.77</td></tr>
+<tr><td>Each extra sensor matters</td><td>thermal off and LiDAR off each cost ≥ 0.03</td><td><b>fail</b>: thermal matters (forest 0.43 → 0.15 without it), LiDAR does not (≤ 0.01)</td></tr>
+<tr><td>Few false alarms</td><td>precision ≥ 0.70</td><td><b>fail</b>: 0.60 / 0.54</td></tr>
 </tbody>
 </table>
 </div>
 
-Across 142 test clips, the pre-registered comparison (9B labels filtered by the fast head vs self-training) is +0.08 to +0.10 F1 on all three seeds, and every 95 % interval excludes zero. The 9B's labels recover about three quarters of the gap to human labels, with no human labelling at the new site, and
-no adapted head gets worse at home (LLVIP 0.86–0.87 for every arm, vs 0.86 before adapting). This is the opposite of the LLVIP distillation
-result, and the reason is visible in the labels themselves:
-- **At the harbour the small head finds 5 % of people,** so its own labels are nearly empty (F1 0.10) and only the 9B
-  (F1 0.44) can bootstrap it.
-- **The teacher matters when the student is out of its depth.**
+On the full report, where box, posture and distance must all be right, the camera + thermal model is best (0.32 vs
+0.28–0.29 for three images, whose distance error is larger). My hypothesis for the ignored LiDAR is the frozen image
+encoder: it was pretrained on photos, and nothing taught it to read a colour-coded range image. A run that also adapts
+the vision encoder is training now, with "LiDAR off must cost ≥ 0.03" fixed as its test in advance.
 
-The "agree on" filter that helped on LLVIP hurts here: intersecting with a student that barely fires throws away most
-real people.
+**The fast head on TriSAR runs on LiDAR.** Switching LiDAR off drops it from 0.37 to 0.22; switching the camera off
+changes nothing. A per-frame thermal level match in training and inference made thermal a second sensor it uses:
+forest F1 0.30 → 0.37 on average over 3 seeds. Combining the two heads (the VLM's people plus non-overlapping fast
+detections) gains +0.054 to +0.066 F1 over the fast head alone, but only with a VLM that abstains in the dark.
+
+![Combined vs single heads](/nightwatch/fig_trisar_router.png)
+
+## 5. Distillation: can the VLM teach the edge detector?
+
+On LLVIP the VLM labelled 8,164 frames from 11 sites whose labels I withheld, and a 12M fast head trained on them.
+Two controls decide what that proves. **Self-training**: the small head labels the same frames itself.
+**Compute-matched**: the labelled-only head, trained for as many steps. Full test set (3,463 frames), 3 seeds:
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>12M fast head, labels on the 11 extra sites</th><th>F1, mean (range)</th><th>AP50</th></tr></thead>
+<tbody>
+<tr><td>none (7 labelled sites only)</td><td>0.821 (0.805–0.833)</td><td>0.872</td></tr>
+<tr><td>none, trained for as many steps</td><td>0.844 (0.827–0.861)</td><td>–</td></tr>
+<tr><td><b>its own labels (self-training)</b></td><td><b>0.859</b> (0.855–0.862)</td><td>0.893</td></tr>
+<tr><td>the 9B's labels</td><td>0.832 (0.827–0.836)</td><td>0.907</td></tr>
+<tr><td>the 9B's labels, kept where the small head agrees</td><td>0.853 (0.830–0.868)</td><td><b>0.915</b></td></tr>
+<tr><td>human labels on all 18 sites (upper bound)</td><td>0.855</td><td>0.912</td></tr>
+</tbody>
+</table>
+</div>
+
+The self-training control is the most useful number in this project. Labelling the extra sites closes the gap to
+human labels, but the small head's own labels do it as well as the 9B's. The 9B's labels still carry something: every
+VLM-labelled student ranks detections as well as human labels (AP50 0.91). On easy LLVIP pedestrians, though, the
+teacher knows nothing the small head doesn't. A VLM teacher should pay off where the small model is weak.
+
+Escalation follows the same logic. On LLVIP, sending the 20 % least certain frames to the VLM recovers 61 % of the
+fast → slow gap (random frames: 28 %). On TriSAR the same rule was *worse* than random, because the fast head is
+unsure exactly where the side-branch VLM cannot see.
+
+![Teacher label quality per site](/nightwatch/fig_llvip_teacher_sites.png)
+
+## 6. A genuinely new site: the LTDv2 harbour
+
+By then the forest was not really "new" any more: I had tuned against it. So I dropped the LLVIP thermal fast head
+(0.86 at home) onto LTDv2, a harbour camera in another country at another resolution. It adapts on one unlabelled
+month and is tested on months a year later. Every arm gets the same 3,000 fine-tuning steps from the same start model,
+and thresholds come from LLVIP only. 3 seeds per arm:
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>Labels for the new site's first month</th><th>F1 a year later</th><th>AP50</th><th>F1 back home</th></tr></thead>
+<tbody>
+<tr><td>None (zero-shot)</td><td>0.13</td><td>0.07</td><td>0.86</td></tr>
+<tr><td>None, same extra training on the home data</td><td>0.14</td><td>0.07</td><td>0.86</td></tr>
+<tr><td>The fast head's own labels (self-training)</td><td>0.14</td><td>0.09</td><td>0.86</td></tr>
+<tr><td>Only boxes both 9B and fast head agree on</td><td>0.23</td><td>0.22</td><td>0.86</td></tr>
+<tr><td><b>The thermal 9B's labels</b></td><td><b>0.46</b> (0.45–0.47)</td><td><b>0.37</b></td><td>0.87</td></tr>
+<tr><td>Human labels (upper bound)</td><td>0.57</td><td>0.52</td><td>0.86</td></tr>
+</tbody>
+</table>
+</div>
+
+Across 142 test clips, the comparison I fixed in advance (9B labels filtered by the fast head vs self-training) is
++0.08 to +0.10 F1 on all three seeds, and every 95 % interval excludes zero. Raw 9B labels do even better, but that
+comparison was not pre-registered, so I report it as post hoc.
+
+**With no human labelling at the new site, the 9B's labels close three quarters of the gap to human labels, and no
+adapted head gets worse at home.** This is the opposite of the LLVIP result, and the reason is visible in the labels:
+at the harbour the small head finds 5 % of people, so its own labels are nearly empty (F1 0.10), and only the 9B
+(F1 0.44) can bootstrap it. **The teacher matters when the student is out of its depth.** The "agree on" filter that
+helped on LLVIP hurts here, because a student that barely fires vetoes most real people.
+
+## 7. Things that did not work, and what they taught me
+
+- **Camera dropout taught hallucination.** My first fused TriSAR VLM reported **3,373** people in the black forest,
+  nearly all wrong. I blamed the new sensor branches. A reviewer pointed out that the run also trained with 20 %
+  camera dropout, keeping the lab people as targets on black frames. Without dropout the same model reported **zero**.
+  The augmentation taught "black camera ⇒ there are people", and only an unseen site exposed it.
+- **My side-branch fusion** lost to plain multi-image input on LLVIP and was ignored on TriSAR.
+- **LiDAR is still unused** by the VLM, even as an image, and TriSAR precision (0.54–0.60) is below my bar.
+- **Single seeds lie.** One student seed gave 0.866 and looked like "the student matches the oracle"; another gave
+  0.830. Every claim here uses three seeds or a paired bootstrap.
+- **Hand-defined site-memory events.** A "person at the water's edge" region was wrong and fired on almost every
+  frame. I excluded those numbers.
 
 ## 8. Site memory
 
-A JEPA-style predictor on LTDv2 (one harbour thermal camera over 8 months) predicts the next frame's frozen DINOv3 tokens from recent frames and a per-site memory. Anomaly is surprise: the peak token prediction error, z-scored per hour and daylight. Inserted persons are found with AUROC 0.70 (pixel baseline 0.52), crowds with 0.85 (token baseline 0.67). The two context types catch different anomalies, and combining them naively averaged the signals away.
+A JEPA-style predictor on LTDv2 (one harbour camera over 8 months) predicts the next frame's frozen DINOv3 tokens from
+recent frames and a per-site memory. Anomaly is surprise: the peak token prediction error, z-scored per hour and
+daylight. Inserted persons are found with AUROC 0.70 (pixel baseline 0.52), crowds with 0.85 (token baseline 0.67).
 
 ## 9. Engineering that kept the numbers honest
 
 - Every comparison uses the same frames; a gate refuses to compare runs with different frame counts.
-- Pseudo-labels originally covered only the 1,500-frame test subset, and the student silently fell back to ground truth for the rest. Caught before training.
-- Independent AI reviewers checked the work. Fable reviewed the plan and the code before the run, and then the live progress every 45 minutes overnight. Codex reviewed the code once. Every finding was triaged: fixed, deferred or rejected with a reason.
+- Every model passes a fail-closed, per-slice regression gate. It blocked the fused VLM against both single-sensor
+  VLMs, and both distilled students against self-training.
+- Pseudo-labels once covered only the 1,500-frame test subset, and the student silently fell back to ground truth for
+  the rest. Caught before training.
+- Before each control result arrived, I wrote down what outcome would count against the claim. The self-training
+  control then overturned my distillation story.
+- Independent AI reviewers (Fable, Codex) checked the plan, the code and the live progress. Every finding was triaged:
+  fixed, deferred or rejected with a reason.
 
-- Every comparison passes through a fail-closed, per-slice regression gate. Overnight it blocked the fused VLM against both single-sensor VLMs, and both distilled students against self-training. It passed the brightness router and the fused VLM under sensor failure. A gate that blocks the author's favourite model is the point.
-- Before each control result arrived, I wrote down what outcome would count against the claim. The self-training control then overturned my distillation story.
-
-
+*Still running as of this update: the three-image model with an adapted vision encoder (does LiDAR become useful?) and
+extra seeds of the camera + thermal and three-image models.*

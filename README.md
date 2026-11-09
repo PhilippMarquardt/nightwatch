@@ -11,7 +11,7 @@ Three questions drive every experiment:
 | | question | short answer |
 |---|---|---|
 | **Q1 Fusion** | How should a 9B VLM receive thermal and LiDAR so that it actually *uses* them? | Feed each sensor as its own image. A custom fusion branch lost on every site, and on TriSAR the VLM ignored it. |
-| **Q2 Distillation** | Can the VLM teach a small edge detector? | On familiar data, not better than self-training (F1 0.86 both). On a truly new site, yes: F1 0.13 → 0.46 with no human labels. |
+| **Q2 Distillation** | Can the VLM teach a small edge detector? | On familiar data, not better than self-training (F1 0.85 vs 0.86). On a truly new site, yes: F1 0.13 → 0.46 with no human labels. |
 | **Q3 New sites** | Does it hold up where it was never trained? | Partly. Unseen forest at night: 0.00 → 0.44 F1 once thermal enters as an image. Unseen harbour: 75 % of the gap to human labels closed. |
 
 ![Unseen forest at night: camera, thermal + LiDAR with ground truth, system output](docs/media/demo_forest_best.gif)
@@ -142,25 +142,20 @@ Metric: person F1 at IoU 0.5 unless stated.
 LLVIP: the 12M head learns from the 7 labelled sites, plus labels on the 11 unlabelled sites from either itself
 (self-training) or the 9B.
 
-Three seeds, full 3,463-frame test set:
+Full 3,463-frame test set (7 unseen sites), mean (range) over 3 seeds:
 
-| 12M fast head | F1, mean (range) |
-|---|---|
-| labelled sites only | 0.821 (0.805–0.833) |
-| labelled only, trained as long as the students | 0.844 (0.827–0.861) |
-| **self-training** on the unlabelled sites | **0.859** (0.855–0.862) |
+| 12M fast head, labels on the 11 unlabelled sites | F1 | AP50 |
+|---|---|---|
+| none (7 labelled sites only) | 0.821 (0.805–0.833) | 0.872 |
+| none, trained as many steps (compute-matched) | 0.844 (0.827–0.861) | – |
+| **its own labels (self-training)** | **0.859** (0.855–0.862) | 0.893 |
+| the 9B's labels | 0.832 (0.827–0.836) | 0.907 |
+| the 9B's labels, kept where the small head agrees | 0.853 (0.830–0.868) | **0.915** |
+| human labels on all 18 sites (upper bound, 1 seed) | 0.855 | 0.912 |
 
-Teacher vs self-training, same 1,500 frames as the slow-head table:
-
-| 12M fast head | F1 |
-|---|---|
-| self-training (seed 0) | 0.864 |
-| student of the 9B, labels kept where both agree (seeds 0 / 1 / 2) | 0.866 / 0.834 / 0.867 |
-| human labels on all 18 sites (upper bound) | 0.857 |
-
-- **On familiar ground the teacher adds nothing on F1.** The 9B student matches self-training (+0.002 [−0.010, +0.019],
-  seed 0) and one seed falls to 0.83. What the 9B transfers is ranking quality: AP50 0.90–0.91 for VLM-labelled
-  students vs 0.893 for self-training (upper bound 0.912).
+- **On familiar ground the teacher adds nothing on F1.** The best 9B student matches self-training (seed 2: +0.005
+  [−0.008, +0.019]) and is less stable across seeds. Plain 9B labels are below self-training on all 3 seeds. What
+  the 9B transfers is ranking quality: AP50 at the human-label level.
 - **Self-training is more than extra steps:** +0.015 over the compute-matched control.
 - **Escalation:** sending the 20 % least certain frames to the 9B recovers 61 % of the fast → slow gap on LLVIP
   (random: 28 %). On TriSAR, where the 9B is blind at night without thermal, the same rule loses to random.
