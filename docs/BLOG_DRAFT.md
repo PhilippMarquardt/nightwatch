@@ -115,6 +115,6 @@ A JEPA-style predictor on LTDv2 (one harbour thermal camera over 8 months) predi
 
 - Every comparison uses the same frames; a gate refuses to compare runs with different frame counts.
 - Pseudo-labels originally covered only the 1,500-frame test subset, and the student silently fell back to ground truth for the rest. Caught before training.
-- Two independent AI reviewers (Fable and Codex) looked over the plan and the code every 45 minutes overnight. Every finding was triaged: fixed, deferred or rejected with a reason.
+- Independent AI reviewers checked the work. Fable reviewed the plan and the code before the run, and then the live progress every 45 minutes overnight. Codex reviewed the code once. Every finding was triaged: fixed, deferred or rejected with a reason.
 
 PENDING: edge numbers (TensorRT FP16 latency per head), final gate verdicts.
