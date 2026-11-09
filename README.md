@@ -13,9 +13,10 @@ regression gate.
   - Self-training beats distilling the 9B into the small head on F1. The 9B teacher only improves ranking.
 - **TriSAR-3D (RGB + thermal + LiDAR, unseen forest at night):**
   - The 9B models are blind in the dark, and the LiDAR fast head is not.
-  - A fused 9B that never learned its extra sensors hallucinated 3,373 people.
-  - The best system pairs a camera-only 9B (posture, range) with a thermal-normalised LiDAR fast head: 0.48 over 3
-    seeds, against 0.36 for the fast head alone.
+  - A fused 9B trained with camera-dropout hallucinated 3,373 people. The same model without dropout reported none:
+    the augmentation, not the extra sensors, taught the hallucination.
+  - The best system pairs that fused 9B (posture, range) with a thermal-normalised LiDAR fast head: 0.49 over 3 seeds,
+    against 0.36 for the fast head alone.
 
 ![Unseen forest at night: camera, thermal + LiDAR with ground truth, system output](docs/media/demo_forest_best.gif)
 
@@ -31,13 +32,15 @@ posture and range. This window was chosen as the forest's best; the forest's ove
 |---|---|---|---|---|
 | VLM zero-shot, RGB (600-frame subset) | 0.07 | – | – | – |
 | VLM fine-tuned, RGB only | 0.25 | 0.16 | 0.00 | 0.78 |
-| VLM fine-tuned, RGB + thermal + LiDAR | 0.17 | 0.11 | 0.00 | **0.79** |
-| … + camera-dropout 0.5 | 0.24 | 0.16 | 0.00 | 0.76 |
+| VLM fine-tuned, RGB + thermal + LiDAR, 20 % camera-dropout | 0.17 | 0.11 | 0.00 | 0.79 |
+| VLM fine-tuned, RGB + thermal + LiDAR, **no camera-dropout** | **0.26** | **0.17** | 0.00 | **0.82** |
+| VLM fine-tuned, RGB + thermal + LiDAR, 50 % camera-dropout | 0.24 | 0.16 | 0.00 | 0.76 |
 | fast head, 12M (mean of 3 seeds, range) | 0.36 (0.30–0.40) | 0.33 (0.27–0.38) | **0.30 (0.24–0.36)** | 0.56 (0.55–0.57) |
 | combined: VLM (camera-dropout) + non-overlapping fast detections (3 seeds) | 0.42 (0.35–0.46) | 0.37 (0.31–0.42) | 0.30 (0.24–0.35) | 0.76 |
 | fast head + per-frame thermal normalisation (3 seeds) | 0.42 (0.37–0.45) | 0.39 (0.35–0.43) | **0.37 (0.31–0.42)** | 0.56 (0.56–0.57) |
 | combined: VLM (camera-dropout) + normalised fast head (3 seeds) | 0.47 (0.44–0.51) | 0.43 (0.39–0.47) | 0.37 (0.31–0.42) | 0.76 |
-| **combined: RGB-only VLM + normalised fast head** (3 seeds) | **0.48 (0.44–0.51)** | **0.44 (0.39–0.48)** | **0.37 (0.31–0.42)** | **0.78** |
+| combined: RGB-only VLM + normalised fast head (3 seeds) | 0.48 (0.44–0.51) | 0.44 (0.39–0.48) | 0.37 (0.31–0.42) | 0.78 |
+| **combined: fused VLM (no dropout) + normalised fast head** (3 seeds) | **0.49 (0.45–0.52)** | **0.45 (0.40–0.49)** | **0.37 (0.31–0.42)** | **0.81** |
 
 What the runs show:
 
@@ -45,16 +48,22 @@ What the runs show:
    the fast head alone, on every fast-head seed. The fast head's absolute level varies a lot by seed (0.30–0.40), and
    validation F1 does not predict which seed generalises, but the gain does not vary. With a VLM that invents people in
    the dark, the same combination *loses* to the fast head (0.32 vs 0.37).
-2. **The fused VLM hallucinated where the RGB-only VLM abstained.** On 2,119 forest frames (four unseen night sequences):
-   - The RGB-only VLM reports 6 people. The camera is black, so it says nobody.
-   - The VLM with thermal and LiDAR side branches reports **3,373**, nearly all wrong.
-   - With 50 % camera-dropout it reports 39, of which 1 is correct (precision over all test frames 0.20 → 0.75).
-   - Two things differ between the first two runs. The fused run has the side branches, and it also trained with 20 %
-     camera-dropout that kept the lab people as targets on black frames, which can teach "black camera ⇒ report
-     people". A fused run without camera-dropout separates the two causes; it is training now.
-   - Either way, the lesson holds: anything added to the input (a sensor or an augmentation) has to earn its place in
-     ablations on an unseen site.
-3. **The TriSAR VLMs never learned to use thermal or LiDAR.**
+2. **Camera-dropout caused the hallucinations, not the extra sensors.** On 2,119 forest frames (four unseen night
+   sequences), people reported by each slow head:
+
+   | slow head | people reported |
+   |---|---|
+   | RGB only | 6 |
+   | RGB + T + LiDAR, 20 % camera-dropout | **3,373**, nearly all wrong |
+   | RGB + T + LiDAR, 50 % camera-dropout | 39, 1 correct |
+   | RGB + T + LiDAR, **no** camera-dropout | **0** |
+
+   Camera-dropout with the lab people kept as targets on black frames taught the model "black camera ⇒ report
+   people". The side branches were innocent, and without dropout the fused model is the best TriSAR slow head (held-out
+   lab 0.82 vs 0.78 RGB-only, distance error 0.41 m). Why 50 % dropout hallucinates far less than 20 % is still open.
+   The lesson: an augmentation that keeps labels the input no longer supports teaches a prior, and only an unseen
+   site exposed it.
+3. **The dropout-trained TriSAR VLMs never learned to use thermal or LiDAR.**
    - Switching either sensor off, or feeding both from another frame, changes held-out-lab F1 by less than 0.03.
    - With the camera off, the VLM emits the same memorised box on every frame.
    - The fused features had large norms during training but carried no decision signal.

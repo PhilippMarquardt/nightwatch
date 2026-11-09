@@ -107,18 +107,20 @@ This is where it got interesting. Person F1 on 2,751 held-out frames:
 <thead><tr><th>System</th><th>All</th><th>Unseen forest</th><th>Held-out lab</th></tr></thead>
 <tbody>
 <tr><td>VLM fine-tuned, RGB only</td><td>0.25</td><td>0.00</td><td>0.78</td></tr>
-<tr><td>VLM fine-tuned, RGB + thermal + LiDAR</td><td>0.17</td><td>0.00</td><td><b>0.79</b></td></tr>
+<tr><td>VLM fine-tuned, RGB + thermal + LiDAR, 20 % camera-dropout</td><td>0.17</td><td>0.00</td><td>0.79</td></tr>
+<tr><td>VLM fine-tuned, RGB + thermal + LiDAR, no camera-dropout</td><td><b>0.26</b></td><td>0.00</td><td><b>0.82</b></td></tr>
 <tr><td>… with camera-dropout 0.5</td><td>0.24</td><td>0.00</td><td>0.76</td></tr>
 <tr><td>Fast head, 12M (mean of 3 seeds, range)</td><td>0.36 (0.30–0.40)</td><td>0.30 (0.24–0.36)</td><td>0.56</td></tr>
 <tr><td>Fast head + thermal normalisation (3 seeds)</td><td>0.42 (0.37–0.45)</td><td><b>0.37 (0.31–0.42)</b></td><td>0.56</td></tr>
-<tr><td><b>RGB-only VLM + normalised fast head, combined</b> (3 seeds)</td><td><b>0.48 (0.44–0.51)</b></td><td>0.37 (0.31–0.42)</td><td><b>0.78</b></td></tr>
+<tr><td>RGB-only VLM + normalised fast head, combined (3 seeds)</td><td>0.48 (0.44–0.51)</td><td>0.37 (0.31–0.42)</td><td>0.78</td></tr>
+<tr><td><b>Fused VLM (no dropout) + normalised fast head, combined</b> (3 seeds)</td><td><b>0.49 (0.45–0.52)</b></td><td>0.37 (0.31–0.42)</td><td><b>0.81</b></td></tr>
 </tbody>
 </table>
 </div>
 
-In the black forest (2,119 frames), the RGB-only VLM reports 6 people: it sees nothing and says so. The VLM with thermal and LiDAR side branches reports **3,373**, nearly all wrong. Two things differ between those runs. The fused one has the extra branches, and it also trained with 20 % camera-dropout that kept the lab people as targets on black frames. A fused run without camera-dropout is training to separate the two. Retraining with 50 % camera-dropout brought it down to 39 reports, only 1 of them correct. Precision over the whole test set went from 0.20 to 0.75.
+In the black forest (2,119 frames), the RGB-only VLM reports 6 people: it sees nothing and says so. My first fused VLM reported **3,373**, nearly all wrong. I blamed the new thermal and LiDAR branches. A reviewer pointed out that this run also trained with 20 % camera-dropout, keeping the lab people as targets on black frames. So I trained the same fused model without camera-dropout. It reported **zero** people in the forest, and it became the best TriSAR slow head (held-out lab 0.82 vs 0.78 for RGB-only). The augmentation taught "black camera ⇒ there are people", and only an unseen site exposed it. Why 50 % dropout hallucinates far less (39 reports) than 20 % is a question I have not answered yet.
 
-The TriSAR VLMs never learned to use thermal or LiDAR. Switching either off, or feeding both from another frame, changes held-out-lab F1 by less than 0.03; with the camera off, the model emits the same memorised box on every frame. On LLVIP the same design does use thermal (0.80 with the camera off), so this is a training problem, not an architecture limit: one epoch on 6k frames, two new encoders at once, and a camera that was already enough on the lab training frames.
+The dropout-trained TriSAR VLMs never learned to use thermal or LiDAR. Switching either off, or feeding both from another frame, changes held-out-lab F1 by less than 0.03; with the camera off, the model emits the same memorised box on every frame. On LLVIP the same design does use thermal (0.80 with the camera off), so this is a training problem, not an architecture limit: one epoch on 6k frames, two new encoders at once, and a camera that was already enough on the lab training frames.
 
 Abstention is what makes the two heads composable. The combined output keeps the VLM's persons (with posture and range) and adds fast-head detections that do not overlap them. On every one of six fast-head variants it gains +0.054 to +0.066 F1 over the fast head alone, even though the fast head's own level varies a lot by seed (0.30–0.40, and lab validation does not predict which seed holds up in the forest). With the hallucinating VLM, the same combination is *worse* than the fast head alone (0.32 vs 0.37).
 
