@@ -60,13 +60,14 @@ What the runs show:
 
    Camera-dropout with the lab people kept as targets on black frames taught the model "black camera ⇒ report
    people". Without dropout, the fused model reports nobody in the forest. On one seed it is also the strongest TriSAR
-   slow head (held-out lab 0.82 vs 0.78 RGB-only, distance error 0.41 m). A second seed and its sensor-ablation run
-   decide whether that gain is real, and whether it actually uses thermal and LiDAR. Why 50 % dropout hallucinates far
+   slow head (held-out lab 0.82 vs 0.78 RGB-only, gate SHIP). Its sensor ablations show it barely uses thermal or
+   LiDAR (point 3), so that gain is not fusion. A second seed decides whether it is noise. Why 50 % dropout hallucinates far
    less than 20 % is still open.
    The lesson: an augmentation that keeps labels the input no longer supports teaches a prior, and only an unseen
    site exposed it.
-3. **The dropout-trained TriSAR VLMs never learned to use thermal or LiDAR.**
-   - Switching either sensor off, or feeding both from another frame, changes held-out-lab F1 by less than 0.03.
+3. **None of the TriSAR VLMs learned to use thermal or LiDAR.**
+   - Switching either sensor off, or feeding both from another frame, changes held-out-lab F1 by less than 0.03. This
+     holds for all three fused runs, including the one without camera-dropout (thermal or LiDAR off: −0.013).
    - With the camera off, the VLM emits the same memorised box on every frame.
    - The fused features had large norms during training but carried no decision signal.
    - The design itself can fuse: on LLVIP, the same side-branch fusion depends on thermal spatially (misaligned thermal
