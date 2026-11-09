@@ -19,13 +19,14 @@ posture and range. This window was chosen as the forest's best; the forest's ove
 | VLM zero-shot, RGB (600-frame subset) | 0.07 | – | – | – |
 | VLM fine-tuned, RGB + thermal + LiDAR | 0.17 | 0.11 | 0.00 | **0.79** |
 | … + camera-dropout 0.5 | 0.24 | 0.16 | 0.00 | 0.76 |
-| fast head, 12M (seed 0 / seed 1) | 0.37 / 0.40 | 0.34 / 0.38 | **0.31 / 0.36** | 0.56 / 0.55 |
-| **combined: VLM (camera-dropout) + non-overlapping fast detections** | **0.43 / 0.46** | **0.39 / 0.42** | 0.31 / 0.35 | 0.76 |
+| fast head, 12M (mean of 3 seeds, range) | 0.36 (0.30–0.40) | 0.33 (0.27–0.38) | **0.30 (0.24–0.36)** | 0.56 (0.55–0.57) |
+| **combined: VLM (camera-dropout) + non-overlapping fast detections** (3 seeds) | **0.42 (0.35–0.46)** | **0.37 (0.31–0.42)** | 0.30 (0.24–0.35) | 0.76 |
 
 What the runs show:
 
-1. **Combining the heads wins, but only with a VLM that abstains.** The combined output gains +0.066 and +0.065 F1 over
-   the fast head alone, for two fast-head seeds. The same combination with the VLM trained without camera-dropout
+1. **Combining the heads wins, but only with a VLM that abstains.** The combined output gains +0.066, +0.065 and +0.054
+   F1 over the fast head alone, one gain per fast-head seed. The absolute level varies a lot by seed (fast head 0.30–0.40,
+   and validation F1 does not predict which seed generalises), but the gain does not. The same combination with the VLM trained without camera-dropout
    *loses* to the fast head (0.32 vs 0.37), because that VLM invents people in the dark.
 2. **Camera-dropout turned hallucination into abstention.** On 2,119 forest frames the earlier VLM reported 3,373 people,
    nearly all wrong. The camera-dropout VLM answers "nobody" on 2,099 of them. Precision went 0.20 → 0.75.

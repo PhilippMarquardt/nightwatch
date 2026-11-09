@@ -79,15 +79,15 @@ This is where it got interesting. Person F1 on 2,751 held-out frames:
 <tbody>
 <tr><td>VLM fine-tuned, RGB + thermal + LiDAR</td><td>0.17</td><td>0.00</td><td><b>0.79</b></td></tr>
 <tr><td>… with camera-dropout 0.5</td><td>0.24</td><td>0.00</td><td>0.76</td></tr>
-<tr><td>Fast head, 12M (two seeds)</td><td>0.37 / 0.40</td><td><b>0.31 / 0.36</b></td><td>0.56 / 0.55</td></tr>
-<tr><td><b>Combined</b></td><td><b>0.43 / 0.46</b></td><td>0.31 / 0.35</td><td>0.76</td></tr>
+<tr><td>Fast head, 12M (mean of 3 seeds, range)</td><td>0.36 (0.30–0.40)</td><td><b>0.30 (0.24–0.36)</b></td><td>0.56</td></tr>
+<tr><td><b>Combined</b> (3 seeds)</td><td><b>0.42 (0.35–0.46)</b></td><td>0.30 (0.24–0.35)</td><td>0.76</td></tr>
 </tbody>
 </table>
 </div>
 
 The first fine-tuned VLM reported 3,373 people on 2,119 forest frames, and almost all of them were wrong. It had learned "the lab has people" and kept saying so in the dark. Retraining with the camera blacked out on half of the samples did not teach it to see in the forest. It taught it to say **nobody**: 2,099 of the 2,119 forest frames now get an empty report, and precision across the test set went from 0.20 to 0.75.
 
-That abstention is what makes the two heads composable. The combined output keeps the VLM's persons (with posture and range) and adds fast-head detections that do not overlap them. It gains +0.066 and +0.065 F1 over the fast head alone, for two fast-head seeds. The same combination with the hallucinating VLM is *worse* than the fast head alone (0.32 vs 0.37).
+That abstention is what makes the two heads composable. The combined output keeps the VLM's persons (with posture and range) and adds fast-head detections that do not overlap them. It gains +0.066, +0.065 and +0.054 F1 over the fast head alone, one gain per fast-head seed. The fast head's own level varies a lot between seeds (0.30 to 0.40 overall). Its validation score, measured on lab scenes, does not predict which seed will hold up in the forest, but the gain from adding the VLM is stable. The same combination with the hallucinating VLM is *worse* than the fast head alone (0.32 vs 0.37).
 
 ![Combined vs single heads](/nightwatch/fig_trisar_router.png)
 
@@ -104,7 +104,7 @@ The fast head, on the other hand, runs on LiDAR. Switching LiDAR off drops it fr
 ## 6. Things that did not work
 
 - **Escalating the VLM only on uncertain frames.** Picking frames by fast-head uncertainty was *worse* than picking them at random. The fast head is uncertain in the forest, where the VLM abstains anyway; the VLM helps in the lab, where the fast head is confident but loosely localised. A useful escalation policy needs a router trained on validation outcomes.
-- **Test-time thermal level-matching for the fast head** (+0.046 forest F1 on one seed). The second seed moved forest F1 by the same amount on its own, so I don't count it until the multi-seed runs are in.
+- **Test-time thermal level-matching for the fast head** (+0.046 forest F1 on one seed). Fast-head seeds alone move forest F1 between 0.24 and 0.36, so one seed proves nothing. A retrain with the level-matching built in runs on three seeds.
 - **Site-memory events I defined by hand.** The "person at the water's edge" region was wrong and fired on almost every frame. I excluded those numbers.
 
 ## 7. Site memory
