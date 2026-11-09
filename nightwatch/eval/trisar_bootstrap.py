@@ -28,6 +28,8 @@ def pred_source(spec):
     run, _, cond = spec.partition("@")
     if cond == "lidaroff":
         return f"runs/{run}/pred_test_lidaroff_full.jsonl", "lidar_off"
+    if cond == "guard":                      # normal predictions with the dead-thermal guard merged in
+        return f"runs/{run}/pred_test_guard.jsonl", "normal"
     return f"runs/{run}/pred_test.jsonl", "normal"
 
 
