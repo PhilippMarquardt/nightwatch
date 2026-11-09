@@ -59,8 +59,10 @@ What the runs show:
    | RGB + T + LiDAR, **no** camera-dropout | **0** |
 
    Camera-dropout with the lab people kept as targets on black frames taught the model "black camera ⇒ report
-   people". The side branches were innocent, and without dropout the fused model is the best TriSAR slow head (held-out
-   lab 0.82 vs 0.78 RGB-only, distance error 0.41 m). Why 50 % dropout hallucinates far less than 20 % is still open.
+   people". Without dropout, the fused model reports nobody in the forest. On one seed it is also the strongest TriSAR
+   slow head (held-out lab 0.82 vs 0.78 RGB-only, distance error 0.41 m). A second seed and its sensor-ablation run
+   decide whether that gain is real, and whether it actually uses thermal and LiDAR. Why 50 % dropout hallucinates far
+   less than 20 % is still open.
    The lesson: an augmentation that keeps labels the input no longer supports teaches a prior, and only an unseen
    site exposed it.
 3. **The dropout-trained TriSAR VLMs never learned to use thermal or LiDAR.**
@@ -204,7 +206,7 @@ A small-scale, end-to-end version of a multi-sensor perception stack for securit
 | `fast_gt_labeled` | fast head on the 7 labeled sites | what the labels alone buy |
 | `fast_distill` | fast head on labeled + slow-head pseudo-labels | does the slow head's knowledge transfer? |
 | `fast_oracle` | fast head on all GT | upper bound |
-| `fast_oracle_rgb/_t` | single-sensor ablations | what each sensor contributes |
+| `fast_oracle_rgb/_t` | single-sensor ablations | thermal-only fast head 0.860 vs RGB+T 0.855 (full test): thermal alone is as good for the small head too; RGB-only running |
 
 ## Stage 2 — TriSAR-3D: RGB + thermal + LiDAR (CC-BY-4.0, TU Darmstadt, Oct 2026)
 
