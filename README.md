@@ -32,11 +32,14 @@ What the runs show:
    *loses* to the fast head (0.32 vs 0.37), because that VLM invents people in the dark.
 2. **Camera-dropout turned hallucination into abstention.** On 2,119 forest frames the earlier VLM reported 3,373 people,
    nearly all wrong. The camera-dropout VLM answers "nobody" on 2,099 of them. Precision went 0.20 → 0.75.
-3. **On TriSAR, the VLM's evidence still comes through the camera.** With the camera off, the camera-dropout VLM emits
-   the same memorised box on all 600 test frames, and thermal level-matching does not change its forest F1 (0.00). The
-   fusion design itself can carry localisation: on LLVIP, the same side-branch fusion keeps **F1 0.80 with the camera
-   off**. The TriSAR failure is specific to that setup (one epoch on 6k frames, a harder report task, and a large thermal
-   domain gap), not a limit of the architecture.
+3. **The TriSAR VLMs never learned to use thermal or LiDAR.**
+   - Switching either sensor off, or feeding both from another frame, changes held-out-lab F1 by less than 0.03.
+   - With the camera off, the VLM emits the same memorised box on every frame.
+   - The fused features had large norms during training but carried no decision signal.
+   - The design itself can fuse: on LLVIP, the same side-branch fusion depends on thermal spatially (misaligned thermal
+     0.53 vs no thermal 0.88) and keeps **F1 0.80 with the camera off**.
+   - On TriSAR, one epoch on 6k frames with two new encoders and a camera that was already sufficient on lab training
+     frames did not get there. Since then, "ablating a sensor must hurt" is a check I run on every fused model.
 4. **The fast head runs on LiDAR, until thermal is normalised.** Across 3 seeds, LiDAR off drops the plain fast head
    from 0.30–0.40 to 0.19–0.24, and thermal off does not hurt it, because raw thermal shifts between sites. A per-frame
    thermal level match applied in training *and* inference makes thermal usable:
