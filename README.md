@@ -207,7 +207,7 @@ A small-scale, end-to-end version of a multi-sensor perception stack for securit
 | `fast_gt_labeled` | fast head on the 7 labeled sites | what the labels alone buy |
 | `fast_distill` | fast head on labeled + slow-head pseudo-labels | does the slow head's knowledge transfer? |
 | `fast_oracle` | fast head on all GT | upper bound |
-| `fast_oracle_rgb/_t` | single-sensor ablations | thermal-only fast head 0.860 vs RGB+T 0.855 (full test): thermal alone is as good for the small head too; RGB-only running |
+| `fast_oracle_rgb/_t` | single-sensor ablations | thermal-only fast head 0.860 vs RGB+T 0.855 (full test): thermal alone is as good for the small head too; RGB-only 0.783 (AP50 0.816) |
 
 ## Stage 2 — TriSAR-3D: RGB + thermal + LiDAR (CC-BY-4.0, TU Darmstadt, Oct 2026)
 
