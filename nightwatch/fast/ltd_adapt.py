@@ -215,7 +215,7 @@ def cmd_eval(a):
     json.dump(res, open(f"{a.run}/ltd_test_metrics.json", "w"), indent=1)
     # LLVIP regression check (home domain): same metrics module as every other LLVIP fast head
     Xt, _, _, tids = load_split("data/cache_fast", "test", dev, index="data/index.json")
-    with open(f"{a.run}/pred_test.jsonl", "w") as fh:
+    with open(f"{a.run}/pred_llvip_test.jsonl", "w") as fh:          # own file: never overwrite a run's pred_test.jsonl
         for i, p in zip(tids, predict(net, Xt, summ["modal"])):
             fh.write(json.dumps({"id": i, "task": "detect", "cond": "normal", **p}) + "\n")
     print(a.run, f"LTD AP50 {res['ap50']:.3f} F1@.5 {res['iou50']['f1']:.3f} F1@.3 {res['iou30']['f1']:.3f}", flush=True)
