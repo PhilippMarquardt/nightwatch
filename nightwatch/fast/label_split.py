@@ -25,16 +25,18 @@ def main():
     ap.add_argument("--index", default="data/index.json")
     ap.add_argument("--backbone", default="resnet18.a1_in1k")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--thr", type=float, default=None, help="override the val-selected threshold (e.g. low thr for consensus)")
     a = ap.parse_args()
     summ = json.load(open(f"{a.run}/train_summary.json"))
     dev = torch.device("cuda")
     net = CenterNetRGBT(a.backbone, IN_CH[summ["modal"]], pretrained=False).to(dev).to(memory_format=torch.channels_last)
     net.load_state_dict(torch.load(f"{a.run}/best.pt", map_location=dev))
     x, _, _, ids = load_split(a.cache, a.split, dev, index=a.index)
-    preds = predict(net, x, summ["modal"], thr=summ["score_thr"])     # val-selected threshold = hard labels
+    thr = a.thr if a.thr is not None else summ["score_thr"]
+    preds = predict(net, x, summ["modal"], thr=thr)                    # val-selected threshold = hard labels
     labels = {i: p["boxes"] for i, p in zip(ids, preds)}
     json.dump(labels, open(a.out, "w"))
-    print(f"self-labels: {len(labels)} frames, {sum(len(v) for v in labels.values())} boxes (thr {summ['score_thr']:.3f})")
+    print(f"self-labels: {len(labels)} frames, {sum(len(v) for v in labels.values())} boxes (thr {thr:.3f})")
 
 
 if __name__ == "__main__":
