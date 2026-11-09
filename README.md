@@ -184,16 +184,17 @@ people a median 16–19 px tall.
 | none, same extra steps on LLVIP | 0.135 (0.130–0.138) | 0.067 |
 | the fast head's own labels (self-training) | 0.140 (0.129–0.145) | 0.085 |
 | 9B box kept only where the fast head agrees (consensus) | 0.234 (0.228–0.246) | 0.219 |
-| **thermal 9B labels** | **0.460 (0.446–0.469)** | **0.374** |
-| human labels (upper bound; 2 of 3 seeds so far) | 0.573 (0.571–0.574) | 0.519 |
+| **thermal 9B labels** | **0.460 (0.446–0.469)** | **0.373** |
+| human labels (upper bound) | 0.570 (0.565–0.574) | 0.520 |
 
 Paired bootstrap over the 142 test clips, per seed:
-- **Pre-registered primary contrast, consensus − self-training: +0.098 [+0.088, +0.109] and +0.101 [+0.091, +0.111].**
+- **Pre-registered primary contrast, consensus − self-training: +0.098 [+0.088, +0.109], +0.101 [+0.091, +0.111] and +0.083 [+0.074, +0.093]. The interval excludes 0 on all 3 seeds.**
 - Pre-registered secondary, self-training − extra steps: ≤ +0.008.
-- 9B labels − self-training: +0.33 (post hoc).
+- 9B labels − self-training: +0.30 to +0.34 (post hoc).
+- Human labels − 9B labels: +0.11 to +0.12.
 
 The 9B's labels recover about 75 % of the zero-shot → human-label gap with no human label at the new site, and the
-adapted head does not get worse at home (LLVIP 0.870 vs 0.859). This is the opposite of LLVIP, where the teacher added
+adapted head does not get worse at home: LLVIP F1 is 0.859–0.866 (arm means over 3 seeds) for every arm, vs 0.860 for the start model. This is the opposite of LLVIP, where the teacher added
 nothing on F1. At the harbour the small head finds 5 % of people, so its own labels are empty. **The teacher matters
 when the student is out of its depth.** The consensus filter that helped on LLVIP hurts here, because a student that
 barely fires vetoes most real people.

@@ -190,8 +190,8 @@ on those labels for the same number of steps in every arm. Three seeds per arm (
 </table>
 </div>
 
-Across 142 test clips, the pre-registered comparison (9B labels filtered by the fast head vs self-training) is +0.10 F1 on every finished seed, with tight intervals. The 9B's labels recover about three quarters of the gap to human labels, with no human labelling at the new site, and
-the adapted head does not get worse at home (LLVIP 0.87 vs 0.86). This is the opposite of the LLVIP distillation
+Across 142 test clips, the pre-registered comparison (9B labels filtered by the fast head vs self-training) is +0.08 to +0.10 F1 on all three seeds, and every 95 % interval excludes zero. The 9B's labels recover about three quarters of the gap to human labels, with no human labelling at the new site, and
+no adapted head gets worse at home (LLVIP 0.86–0.87 for every arm, vs 0.86 before adapting). This is the opposite of the LLVIP distillation
 result, and the reason is visible in the labels themselves:
 - **At the harbour the small head finds 5 % of people,** so its own labels are nearly empty (F1 0.10) and only the 9B
   (F1 0.44) can bootstrap it.
