@@ -7,7 +7,7 @@ below comes from **sites neither model saw in training**, including a forest at 
 **In short.** Each result is backed by site-level confidence intervals, three seeds where seeds vary, and a fail-closed
 regression gate.
 - **LLVIP (RGB + thermal, 7 unseen sites):**
-  - The best model is the simplest fusion: the 9B fine-tuned on both images. It reaches 0.937, and 0.89 with either
+  - The best model is the simplest fusion: the 9B fine-tuned on both images. It reaches 0.937, and at least 0.89 with either
     camera dead.
   - My native-encoder side-branch fusion lost to it on all 7 sites, and the gate blocked it.
   - Self-training beats distilling the 9B into the small head on F1. The 9B teacher only improves ranking.
@@ -24,7 +24,7 @@ regression gate.
 
 *Unseen forest, night (TriSAR-3D test). Left: the camera is almost black. Middle: thermal plus LiDAR coloured by range, with
 ground truth in white. Right: the VLM says "nobody visible" and the LiDAR-driven fast head finds both people with
-posture and range. This window was chosen as the forest's best; the forest's overall F1 is 0.31.*
+posture and range. This window was chosen as the forest's best; that fast head's overall forest F1 is 0.31 (seed 0; 0.30 mean over 3 seeds).*
 
 ![System diagram](docs/architecture.png)
 
