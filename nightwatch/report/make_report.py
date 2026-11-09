@@ -32,16 +32,20 @@ COL = {
     "zs_rgb": GRAY, "zs_dual": "#6b6a65",
     "fast_distill": "#c98500", "fast_oracle": "#d55181", "fast_gt_labeled": "#9085e9",
     "fast_oracle_rgb": "#199e70", "fast_oracle_t": "#e66767",
+    "sft_thermal": "#e66767", "router_lum": "#f0efec", "fast_selfdistill": "#199e70", "fast_distill_consensus": "#3987e5",
+    "fast_gt_labeled_long": "#6b6a65", "fast_distill_rgbteacher": "#d95926",
 }
 NAME = {
     "zs_rgb": f"{VLM} zero-shot (RGB)", "zs_dual": f"{VLM} zero-shot (RGB + T image)",
-    "sft_rgb": "LoRA, RGB only", "sft_dual": "LoRA, thermal as 2nd image", "sft_fusion": "LoRA + native thermal fusion (ours)", "grpo_fusion": "fusion + GRPO (F1 reward)",
+    "sft_rgb": "LoRA, RGB only", "sft_dual": "LoRA, thermal as 2nd image", "sft_fusion": "LoRA, thermal fused as side branch", "sft_thermal": "LoRA, thermal only (thermal as the image)", "router_lum": "brightness router (fused if dark, RGB-only if bright)", "grpo_fusion": "fusion + GRPO (F1 reward)",
     "fast_gt_labeled": "Fast head, 7 labeled sites", "fast_distill": "Fast head, distilled from slow head",
     "fast_oracle": "Fast head, all sites hand-labeled", "fast_oracle_rgb": "Fast head, RGB only (oracle labels)",
     "fast_oracle_t": "Fast head, thermal only (oracle labels)",
+    "fast_gt_labeled_long": "Fast head, 7 labeled sites, compute-matched", "fast_selfdistill": "Fast head, self-training on 11 sites",
+    "fast_distill_consensus": "Fast head, VLM labels confirmed by fast head", "fast_distill_rgbteacher": "Fast head, RGB-VLM labels",
 }
-SLOW = ["zs_rgb", "zs_dual", "sft_rgb", "sft_dual", "sft_fusion", "grpo_fusion"]
-FAST = ["fast_gt_labeled", "fast_distill", "fast_oracle", "fast_oracle_rgb", "fast_oracle_t"]
+SLOW = ["zs_rgb", "zs_dual", "sft_rgb", "sft_thermal", "sft_dual", "sft_fusion", "router_lum", "grpo_fusion"]
+FAST = ["fast_gt_labeled", "fast_gt_labeled_long", "fast_selfdistill", "fast_distill", "fast_distill_consensus", "fast_distill_rgbteacher", "fast_oracle", "fast_oracle_rgb", "fast_oracle_t"]
 
 plt.rcParams.update({
     "figure.facecolor": SURF, "axes.facecolor": SURF, "savefig.facecolor": SURF, "text.color": INK,
@@ -68,6 +72,8 @@ def get(m, key, sl, metric):
         return m[key][sl][metric]
     except Exception:
         # a single-sensor model is unaffected by losing the *other* sensor: report its normal score
+        if isinstance(m, dict) and m.get("_nofb"):
+            return None
         if key == "detect/thermal_off" and m and "detect/rgb_off" not in m:
             return get(m, "detect/normal", sl, metric)
         if key == "detect/rgb_off" and m and "detect/thermal_off" not in m and "detect/normal" in m and m.get("_modal") == "t":
@@ -308,9 +314,16 @@ def fig_examples(root="data/raw/LLVIP", n=4):
 
 # ------------------------------------------------------------------ assemble
 def summary_table():
-    lines = ["| model | F1 all | F1 darkest 25% | F1 camera dead | F1 thermal dead | count exact | img/s |", "|---|---|---|---|---|---|---|"]
+    lines = ["F1 all / darkest 25 % on the same 1,500 test frames for every row (fast heads re-scored on that subset); "
+             "sensor-dead columns: slow heads on the fixed 800-frame subset, fast heads on the full test set.", "",
+             "| model | F1 all | F1 darkest 25% | F1 camera dead | F1 thermal dead | count exact | img/s |", "|---|---|---|---|---|---|---|"]
     for r in SLOW + FAST:
+        sub = metrics(r, "pred_test_sub1500_metrics") or {}
         m = {**(metrics(r, "pred_test_robust_metrics") or {}), **(metrics(r) or {})}
+        if sub.get("detect/normal"):
+            m = {**m, "detect/normal": sub["detect/normal"]}
+        if r == "router_lum":          # uses both sensors depending on the frame: no single-sensor fallback
+            m["_nofb"] = True
         if not m:
             continue
         tim = jload(f"{RUNS}/{r}/pred_test_timing.json") or []
@@ -376,9 +389,17 @@ def main():
             md += [f"![{k}]({v})", ""]
     if pseudo:
         md.append(f"Pseudo-label quality on the unlabeled sites (scored against their hidden GT): {json.dumps(res['pseudo_label_quality'])}")
-    if gate:
-        md.append(f"\nRegression gate (fusion vs dual-image baseline): **{gate['verdict']}**")
-    open(f"{OUT}/results.md", "w").write("\n".join(md))
+    gates = sorted(glob.glob(f"{RUNS}/gate*.json"))
+    if gates:
+        md += ["", "## Regression gates (fail-closed, per slice)", "", "| comparison | verdict |", "|---|---|"]
+        for g in gates:
+            v = jload(g) or {}
+            md.append(f"| {os.path.basename(g)[:-5]} | {v.get('verdict', '?')} |")
+    for e in ["fig_llvip_sites", "fig_llvip_fusion_vs_lum", "fig_llvip_teacher_sites", "fig_llvip_thr_sweep", "fig_trisar_thr_sweep"]:
+        if os.path.exists(f"{OUT}/{e}.png"):
+            md += ["", f"![{e}]({e}.png)"]
+            figs.setdefault(e, f"{e}.png")
+    open(f"{OUT}/results.md", "w", encoding="utf-8").write("\n".join(md))
     # self-contained HTML (images inlined) for quick viewing / sharing
     html = ["<!doctype html><meta charset=utf-8><title>Night Watch results</title><style>body{background:#1a1a19;color:#f0efec;"
             "font:15px/1.5 system-ui;max-width:1100px;margin:auto;padding:24px}img{max-width:100%}table{border-collapse:collapse}"
