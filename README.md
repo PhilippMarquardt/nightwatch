@@ -75,16 +75,16 @@ What the runs show:
   9B labels, Δ +0.002 [−0.010, +0.019], same frames), and a second seed of the consensus student falls back to 0.83. The
   pre-registered self-training control caught this. What the teacher reliably transfers is ranking quality: AP50 0.90–0.91
   for all four VLM-labelled students (oracle 0.912), against 0.893 for self-training and 0.877 labelled-only. The F1
-  operating point does not survive a one-site validation set.
+  operating point does not survive a one-site validation set. Its labels on the unlabeled sites (F1 0.82 vs withheld
+  GT, with hallucinated lamps and foliage at two bright sites) are no better than the small head's own confident labels
+  on easy LLVIP pedestrians.
 - **Self-training is not just more steps.** A labelled-only student trained for the same number of updates reaches 0.843;
   self-training is +0.019 above it [+0.005, +0.030] (full test set). About a third of the gain is steps, and two thirds
   is the self-labelled data from 11 more sites.
-
-\* full 3,463-frame test set (camera-off cells and the compute-matched row); all other cells use the 1,500 frames. Its labels on the unlabeled
-  sites (F1 0.82 vs withheld GT, with hallucinated lamps and foliage at two bright sites) are no better than the small
-  head's own confident labels on easy LLVIP pedestrians.
 - **Fusion is spatial, and misalignment is dangerous.** With thermal taken from a different frame, the 9B drops to 0.53
   (0.88 with thermal simply off). A sync or calibration fault is worse than a dead thermal camera.
+
+\* full 3,463-frame test set (camera-off cells and the compute-matched row); all other cells use the 1,500 frames.
 
 - Escalation works when the slow head is competent everywhere. Sending the 20 % most uncertain frames to the 9B
   recovers 61 % of the fast→slow gap (random: 28 %). On TriSAR, where the 9B is blind at night, the same rule loses to
