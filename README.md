@@ -64,15 +64,17 @@ What the runs show:
 | **9B fine-tuned, thermal fused onto its tokens** | **0.894** | 0.87–0.93 | **0.80** | **0.902** |
 | 12M fast head, 7 labelled sites (3 seeds) | 0.82 (0.80–0.83) | | | 0.77 (0.75–0.79) |
 | 12M fast head, self-training on the 11 unlabeled sites (control) | 0.864 | 0.82–0.89 | | 0.841 |
-| 12M student of the 9B, consensus-filtered labels on 11 unlabeled sites (1 seed) | 0.866 | 0.83–0.89 | | 0.852 |
+| 12M student of the 9B, consensus-filtered labels on 11 unlabeled sites (seeds 0 / 1) | 0.866 / 0.83 | 0.83–0.89 (s0) | | 0.852 (s0) |
 | 12M fast head, human labels on all 18 sites (oracle) | 0.857 | 0.83–0.88 | | 0.839 |
 
 - Fusion lifts the 9B model on all 7 sites (+0.055 over zero-shot, CI +0.035 to +0.076). It still finds people with the
   camera black (0.80). Thermal as a plain second image *hurts* on all 7 sites.
 - **Distillation from the 9B did not beat self-training on F1.** Pseudo-labelling the 11 unlabeled sites closes the gap
   to the human-label oracle, but the 12M head's own labels do it equally well (0.864 vs 0.866 for the consensus-filtered
-  9B labels, Δ +0.002 [−0.010, +0.019], same frames). The pre-registered self-training control caught this. The teacher's labels do
-  transfer ranking quality: AP50 0.912 vs 0.893 for self-training and 0.877 labelled-only. Its labels on the unlabeled
+  9B labels, Δ +0.002 [−0.010, +0.019], same frames), and a second seed of the consensus student falls back to 0.83. The
+  pre-registered self-training control caught this. What the teacher reliably transfers is ranking quality: AP50 0.90–0.91
+  for all four VLM-labelled students (oracle 0.912), against 0.893 for self-training and 0.877 labelled-only. The F1
+  operating point does not survive a one-site validation set. Its labels on the unlabeled
   sites (F1 0.82 vs withheld GT, with hallucinated lamps and foliage at two bright sites) are no better than the small
   head's own confident labels on easy LLVIP pedestrians.
 - **Fusion is spatial, and misalignment is dangerous.** With thermal taken from a different frame, the 9B drops to 0.53
