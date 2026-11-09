@@ -7,7 +7,7 @@ TriSAR's test set has only 6 sequences (4 forest, 2 lab), so two resampling unit
 
 Counts use the same greedy IoU-0.5 matching as nightwatch.eval.metrics_trisar (report task, normal condition).
 
-python -m nightwatch.eval.trisar_bootstrap --pairs t_sft_tri:t_sft_rgbt_i t_sft_tri_s1:t_sft_rgbt_i_s1
+python -m nightwatch.eval.trisar_bootstrap --pairs t_sft_tri:t_sft_rgbt_i t_sft_tri@lidaroff:t_sft_rgbt_i
 """
 from __future__ import annotations
 
@@ -23,11 +23,20 @@ from nightwatch.slow.data_trisar import load_frames
 BLOCK = 50
 
 
-def counts(run, frames, slice_fn=None):
+def pred_source(spec):
+    """'run' -> normal predictions; 'run@lidaroff' -> the full-test LiDAR-off predictions of that run."""
+    run, _, cond = spec.partition("@")
+    if cond == "lidaroff":
+        return f"runs/{run}/pred_test_lidaroff_full.jsonl", "lidar_off"
+    return f"runs/{run}/pred_test.jsonl", "normal"
+
+
+def counts(spec, frames, slice_fn=None):
+    path, cond = pred_source(spec)
     P = {}
-    for line in open(f"runs/{run}/pred_test.jsonl"):
+    for line in open(path):
         d = json.loads(line)
-        if d.get("task") == "report" and d.get("cond") == "normal":
+        if d.get("task") == "report" and d.get("cond") == cond:
             P[d["id"]] = d
     out = {}
     for i, f in frames.items():
@@ -75,7 +84,7 @@ def main():
     res = {}
     for pair in a.pairs:
         A, B = pair.split(":")
-        if not (os.path.exists(f"runs/{A}/pred_test.jsonl") and os.path.exists(f"runs/{B}/pred_test.jsonl")):
+        if not (os.path.exists(pred_source(A)[0]) and os.path.exists(pred_source(B)[0])):
             print("skip", pair); continue
         cA, cB = counts(A, all_frames), counts(B, all_frames)
         res[pair] = {}
