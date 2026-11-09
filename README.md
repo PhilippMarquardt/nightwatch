@@ -35,8 +35,8 @@ What the runs show:
    fusion design itself can carry localisation: on LLVIP, the same side-branch fusion keeps **F1 0.80 with the camera
    off**. The TriSAR failure is specific to that setup (one epoch on 6k frames, a harder report task, and a large thermal
    domain gap), not a limit of the architecture.
-4. **The fast head runs on LiDAR.** LiDAR off: 0.37 → 0.22. Camera off: no change. Thermal off: slightly better
-   off-domain, because raw thermal shifts between sites.
+4. **The fast head runs on LiDAR.** Across 3 seeds, LiDAR off drops it from 0.30–0.40 to 0.19–0.24. Camera off changes
+   nothing. Thermal off gives 0.32–0.38, no worse than normal, because raw thermal shifts between sites.
 5. **Escalating the VLM only on uncertain frames did not beat random escalation.** Fast-head doubt sits in the forest,
    where the VLM abstains. This is logged as a negative result.
 
