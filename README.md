@@ -99,6 +99,7 @@ What the runs show:
 | 9B fine-tuned, thermal only (thermal fed as the image) | 0.923 | 0.89–0.95 | n/a (no camera input) | 0.00 | **0.00** | 0.891 |
 | 9B fine-tuned, thermal fused as a side branch onto the RGB tokens | 0.894 | 0.87–0.93 | 0.80 | 0.88 | 0.80 | 0.902 |
 | **9B fine-tuned, RGB and thermal as two images** (2× visual tokens) | **0.937** | **0.92–0.95** | **0.93** | **0.89** | **0.89** | **0.916** |
+| 9B fine-tuned, two images at half resolution (~714 tokens, same as the fused model) | 0.928 | 0.90–0.94 | 0.91 | 0.88 | 0.88 | – |
 | brightness router: fused head on dark frames, RGB-only head on bright ones | 0.910 | 0.89–0.94 | – | – | – | 0.902 |
 | 12M fast head, 7 labelled sites (3 seeds) | 0.82 (0.80–0.83) | | 0.83 (s0) | 0.68* (s0) | 0.68* | 0.77 (0.75–0.79) |
 | … same, trained for as many steps as the pseudo-label students (3 seeds) | 0.84* (0.83–0.86) | | 0.83* (s0) | 0.41* (s0) | 0.41* | |
@@ -114,9 +115,13 @@ What the runs show:
 
   Zero-shot, the same input was the *worst* model (0.696: it counts people twice across the two images). That
   zero-shot result is what motivated my side-branch design, and the motivation does not survive fine-tuning.
-- **My side-branch fusion lost to it:** −0.043 [−0.071, −0.013], worse on all 7 sites. It keeps the RGB token budget
-  and survives either sensor failing (worst case 0.80, where single-sensor heads drop to 0). But on LLVIP it is beaten
-  by the two-image model in accuracy *and* robustness. Its only advantage is half the visual tokens. The fail-closed
+- **My side-branch fusion lost to it, even at the same token budget.**
+  - Against the full two-image model: −0.043 [−0.071, −0.013], worse on all 7 sites.
+  - Against a two-image model at half resolution (~714 visual tokens, the same budget as my fused model's 720), it
+    still loses: 0.894 vs 0.928, −0.035 [−0.063, −0.006], 7/7 sites, worst single failure 0.80 vs 0.88. The gate
+    passes the half-resolution two-image model against it.
+  - Doubling the resolution adds only +0.009.
+  - So the side branch has no remaining advantage on LLVIP. The fail-closed
   regression gate blocked it against every stronger baseline. That gate is the part of this project I would carry to a
   production fusion team.
 
