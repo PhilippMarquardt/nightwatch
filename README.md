@@ -21,10 +21,10 @@ posture and range. This window was chosen as the forest's best; the forest's ove
 | VLM fine-tuned, RGB + thermal + LiDAR | 0.17 | 0.11 | 0.00 | **0.79** |
 | … + camera-dropout 0.5 | 0.24 | 0.16 | 0.00 | 0.76 |
 | fast head, 12M (mean of 3 seeds, range) | 0.36 (0.30–0.40) | 0.33 (0.27–0.38) | **0.30 (0.24–0.36)** | 0.56 (0.55–0.57) |
-| combined: RGB-only VLM + non-overlapping fast detections (seed 0) | 0.44 | 0.39 | 0.31 | 0.78 |
 | combined: VLM (camera-dropout) + non-overlapping fast detections (3 seeds) | 0.42 (0.35–0.46) | 0.37 (0.31–0.42) | 0.30 (0.24–0.35) | 0.76 |
 | fast head + per-frame thermal normalisation (3 seeds) | 0.42 (0.37–0.45) | 0.39 (0.35–0.43) | **0.37 (0.31–0.42)** | 0.56 (0.56–0.57) |
-| **combined: VLM (camera-dropout) + normalised fast head** (3 seeds) | **0.47 (0.44–0.51)** | **0.43 (0.39–0.47)** | 0.37 (0.31–0.42) | 0.76 |
+| combined: VLM (camera-dropout) + normalised fast head (3 seeds) | 0.47 (0.44–0.51) | 0.43 (0.39–0.47) | 0.37 (0.31–0.42) | 0.76 |
+| **combined: RGB-only VLM + normalised fast head** (3 seeds) | **0.48 (0.44–0.51)** | **0.44 (0.39–0.48)** | **0.37 (0.31–0.42)** | **0.78** |
 
 What the runs show:
 
@@ -32,14 +32,15 @@ What the runs show:
    the fast head alone, on every fast-head seed. The fast head's absolute level varies a lot by seed (0.30–0.40), and
    validation F1 does not predict which seed generalises, but the gain does not vary. With a VLM that invents people in
    the dark, the same combination *loses* to the fast head (0.32 vs 0.37).
-2. **Adding unused sensors made the VLM hallucinate.** On 2,119 forest frames (four unseen night sequences):
+2. **The fused VLM hallucinated where the RGB-only VLM abstained.** On 2,119 forest frames (four unseen night sequences):
    - The RGB-only VLM reports 6 people. The camera is black, so it says nobody.
-   - The VLM with thermal and LiDAR added as side branches reports **3,373**, nearly all wrong. Those branches carry no
-     detection signal on lab frames (point 3), but their out-of-distribution forest features push the language model
-     into reporting people.
-   - Camera-dropout training suppresses this (39 reports, precision 0.20 → 0.75).
-   - Lesson for a fused stack: every added sensor is also an out-of-distribution input, and it has to earn its place in
-     ablations.
+   - The VLM with thermal and LiDAR side branches reports **3,373**, nearly all wrong.
+   - With 50 % camera-dropout it reports 39 (precision 0.20 → 0.75).
+   - Two things differ between the first two runs. The fused run has the side branches, and it also trained with 20 %
+     camera-dropout that kept the lab people as targets on black frames, which can teach "black camera ⇒ report
+     people". A fused run without camera-dropout separates the two causes; it is training now.
+   - Either way, the lesson holds: anything added to the input (a sensor or an augmentation) has to earn its place in
+     ablations on an unseen site.
 3. **The TriSAR VLMs never learned to use thermal or LiDAR.**
    - Switching either sensor off, or feeding both from another frame, changes held-out-lab F1 by less than 0.03.
    - With the camera off, the VLM emits the same memorised box on every frame.
@@ -65,19 +66,19 @@ What the runs show:
 
 95 % intervals come from resampling whole sites, not frames. Every row is scored on the same frames; "darkest 25 %" is the 375 frames with the lowest camera brightness.
 
-| model | F1 | 95 % site CI | camera off | thermal off | darkest 25 % |
-|---|---|---|---|---|---|
-| Qwen3.5-9B zero-shot, RGB | 0.839 | 0.80–0.88 | 0.00 | – | 0.832 |
-| zero-shot, thermal as a 2nd image | 0.696 | 0.64–0.78 | 0.20 | 0.83 | – |
-| 9B fine-tuned, RGB only (same recipe) | 0.882 | 0.83–0.92 | 0.00 | 0.88 | 0.820 |
-| **9B fine-tuned, thermal only** (thermal fed as the image) | **0.923** | 0.89–0.95 | 0.92 | **0.00** | 0.891 |
-| **9B fine-tuned, thermal fused onto its tokens** | 0.894 | 0.87–0.93 | **0.80** | **0.88** | **0.902** |
-| brightness router: fused head on dark frames, RGB-only head on bright ones | 0.910 | 0.89–0.94 | – | – | 0.902 |
-| 12M fast head, 7 labelled sites (3 seeds) | 0.82 (0.80–0.83) | | 0.83 (s0) | 0.68* (s0) | 0.77 (0.75–0.79) |
-| … same, trained for as many steps as the pseudo-label students | 0.84* | | 0.83* | 0.41* | |
-| 12M fast head, self-training on the 11 unlabeled sites (control) | 0.864 | 0.82–0.89 | 0.85* | 0.72* | 0.841 |
-| 12M student of the 9B, consensus-filtered labels on 11 unlabeled sites (seeds 0 / 1 / 2) | 0.866 / 0.834 / 0.867 | 0.83–0.89 (s0) | 0.85* (s0) | 0.72* (s0) | 0.852 (s0) |
-| 12M fast head, human labels on all 18 sites (oracle) | 0.857 | 0.83–0.88 | 0.84* | 0.67* | 0.839 |
+| model | F1 | 95 % site CI | camera off | thermal off | worst single failure | darkest 25 % |
+|---|---|---|---|---|---|---|
+| Qwen3.5-9B zero-shot, RGB | 0.839 | 0.80–0.88 | 0.00 | n/a | 0.00 | 0.832 |
+| zero-shot, thermal as a 2nd image | 0.696 | 0.64–0.78 | 0.20 | 0.83 | 0.20 | – |
+| 9B fine-tuned, RGB only (same recipe) | 0.882 | 0.83–0.92 | 0.00 | n/a (no thermal input) | **0.00** | 0.820 |
+| **9B fine-tuned, thermal only** (thermal fed as the image) | **0.923** | 0.89–0.95 | n/a (no camera input) | 0.00 | **0.00** | 0.891 |
+| **9B fine-tuned, thermal fused onto its tokens** | 0.894 | 0.87–0.93 | **0.80** | **0.88** | **0.80** | **0.902** |
+| brightness router: fused head on dark frames, RGB-only head on bright ones | 0.910 | 0.89–0.94 | – | – | – | 0.902 |
+| 12M fast head, 7 labelled sites (3 seeds) | 0.82 (0.80–0.83) | | 0.83 (s0) | 0.68* (s0) | 0.68* | 0.77 (0.75–0.79) |
+| … same, trained for as many steps as the pseudo-label students | 0.84* | | 0.83* | 0.41* | 0.41* | |
+| 12M fast head, self-training on the 11 unlabeled sites (control) | 0.864 | 0.82–0.89 | 0.85* | 0.72* | 0.72* | 0.841 |
+| 12M student of the 9B, consensus-filtered labels on 11 unlabeled sites (seeds 0 / 1 / 2) | 0.866 / 0.834 / 0.867 | 0.83–0.89 (s0) | 0.85* (s0) | 0.72* (s0) | 0.72* | 0.852 (s0) |
+| 12M fast head, human labels on all 18 sites (oracle) | 0.857 | 0.83–0.88 | 0.84* | 0.67* | 0.67* | 0.839 |
 
 - **The strongest single model is thermal-only, not the fused one.** The fine-tuned 9B with thermal fed straight into its
   own ViT reaches 0.923, +0.042 over RGB-only [+0.007, +0.074] on 6/7 sites. On average, fusion is −0.030 against it
