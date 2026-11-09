@@ -143,7 +143,12 @@ Mean (range) over seeds; "lab, camera dead" is on the fixed 600-frame robustness
   | 2 | +0.035 [+0.008, +0.062] | +0.032 [+0.007, +0.056] |
 
   The gain survives with the LiDAR image blacked out at test time (on seed 1, LiDAR off even scores slightly higher:
-  0.512 vs 0.508), so it comes from *training* with a third image, not from using LiDAR when detecting. Resampling whole sequences instead (only 6 in the test set) gives intervals
+  0.512 vs 0.508), so it comes from *training* with a third image, not from using LiDAR when detecting.
+  A post-hoc diagnostic shows what that training effect is. Both models sometimes degenerate on dark forest frames into
+  lists of 5+ tiny, mostly invented people. The two-image model does this on 73–152 frames per seed, the three-image
+  model on 0–42. Blanking those frames' output (diagnostic only, not a deployed rule), the two-image model scores
+  0.52–0.55 and the three-image model 0.52–0.53. **The third image mainly makes this failure rarer; it does not add
+  detection ability.** Resampling whole sequences instead (only 6 in the test set) gives intervals
   that include zero, so this is a small effect.
 - On the full report (box + posture + distance all correct) the two-image model is slightly better: 0.31 vs 0.29 (3-seed means).
 

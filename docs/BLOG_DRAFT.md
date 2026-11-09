@@ -160,7 +160,11 @@ Three images still beat two, on every seed, by +0.03 to +0.05 F1 (paired bootstr
 interval above zero). So I tested where that gain comes from: I re-ran all three seeds on the full test set with the
 LiDAR image blacked out. The advantage barely moved (+0.03 to +0.04). **The model does not read LiDAR; training with a
 third image helped anyway**, which is a different and less flattering claim than "LiDAR helps". With only six test
-sequences, resampling whole sequences gives intervals that include zero, so it is a small effect.
+sequences, resampling whole sequences gives intervals that include zero, so it is a small effect. A look at the outputs
+explains it: on dark forest frames both models sometimes degenerate into lists of five or more tiny, mostly invented
+people. The two-image model does this on 73–152 frames per seed, the three-image model on 0–42. Blank those frames
+(as a diagnostic, not a deployed rule) and the two models tie at about 0.52–0.55. The third image makes that failure
+rarer; it does not add detection ability.
 
 On the full report, where box, posture and distance must all be right, the camera + thermal model is slightly better
 (0.31 vs 0.29). My hypothesis for the ignored LiDAR is the frozen image encoder: it was pretrained on photos, and
