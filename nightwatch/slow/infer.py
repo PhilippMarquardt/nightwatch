@@ -102,6 +102,9 @@ def main():
     if a.dataset == "trisar":
         from nightwatch.slow.data_trisar import load_frames
         recs = load_frames(a.fused_dir, set(a.split.split(",")))
+        if os.environ.get("NW_ONLY_IDS"):              # re-infer a fixed subset (e.g. the dead-thermal frames)
+            keep = set(json.load(open(os.environ["NW_ONLY_IDS"])))
+            recs = [r for r in recs if r["id"] in keep]
         if a.limit:
             recs = sorted(random.Random(0).sample(recs, min(a.limit, len(recs))), key=lambda r: r["id"])
     else:

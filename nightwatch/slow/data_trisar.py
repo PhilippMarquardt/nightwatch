@@ -134,6 +134,11 @@ def _level_match(th):
     import numpy as _np
     a = _np.asarray(th, dtype=_np.float32)
     med, hi = _np.median(a), _np.percentile(a, 99.5)
+    # Dead-sensor guard (2026-11-09, reviewer finding): a flat thermal channel would be stretched ~100x into speckle.
+    # Treat it like "thermal off" (a black frame maps to uniform 135 below, which is what training saw). NW_DEADT_GUARD=0
+    # restores the old behaviour. Train/val contain no flat frames, so training is unaffected.
+    if os.environ.get("NW_DEADT_GUARD", "1") != "0" and hi - med < 5.0:
+        return Image.new("L", th.size, 135)
     return Image.fromarray(_np.clip(135 + (a - med) * (100.0 / max(hi - med, 1.0)), 0, 255).astype(_np.uint8))
 
 
