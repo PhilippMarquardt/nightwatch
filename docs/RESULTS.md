@@ -24,10 +24,10 @@ Paths in this file are relative to the repo root (figures are in `docs/media/`).
 | combined: RGB-only VLM + normalised fast head (3 seeds) | 0.48 (0.44–0.51) | 0.44 (0.39–0.48) | 0.37 (0.31–0.42) | 0.78 |
 | **combined: fused VLM (no dropout) + normalised fast head** (3 seeds) | **0.49 (0.45–0.52)** | **0.45 (0.40–0.49)** | **0.37 (0.31–0.42)** | **0.81** |
 
-The three-image model beats the two-image model on every seed (+0.03 to +0.05 F1, paired block bootstrap, intervals
-above zero), and keeps that lead with the LiDAR image blacked out at test time (+0.03 to +0.04; on seed 1, LiDAR off
-scores slightly *higher* than normal, 0.512 vs 0.508). The gain is a training-time effect of the third image, not LiDAR
-use.
+The three-image model's +0.03 to +0.05 lead over the two-image model (all 2,751 frames) is a test-data artefact.
+It comes entirely from 259 forest frames with a dead (flat) thermal channel, where the per-frame thermal normalisation
+amplifies sensor noise and the people are essentially unobservable (median 57 m, 0 LiDAR points). On the 2,492
+well-formed frames the two tie: camera + thermal 0.546 (0.530–0.558), three images 0.540 (0.535–0.543). See the README.
 
 What the runs show:
 

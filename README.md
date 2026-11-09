@@ -136,23 +136,23 @@ Mean (range) over seeds; "lab, camera dead" is on the fixed 600-frame robustness
   | A2: each extra sensor matters | thermal off and LiDAR off each cost ≥ 0.03 | **fail**: thermal matters on 3/3 seeds (forest 0.43 → 0.15 without it); LiDAR off costs ≤ 0.004 in the lab |
   | A3: few false alarms | precision ≥ 0.70 | **fail** on 3/3 seeds (0.52–0.60) |
 
-- **Adding LiDAR as a third image helps, but not because the model reads LiDAR.** Paired bootstrap over 50-frame
-  blocks of the 2,751 test frames, per seed:
+- **Adding LiDAR as a third image does not help detection. The apparent gain was a test-data artefact.** Over all
+  2,751 test frames the three-image model scored +0.03 to +0.05 F1 above camera + thermal on every seed, and the gain
+  survived with LiDAR blacked out at test time. An independent review traced it to 259 forest test frames whose thermal
+  channel is flat (a dead sensor, std < 2 grey levels). My per-frame thermal normalisation amplifies the sensor noise
+  there into speckle the models never saw in training. The people in those frames are essentially invisible to every
+  sensor: median 57 m away, 11 px tall, a median of 0 LiDAR points, and 143 of the 259 frames have nobody at all.
+  Every model, including the LiDAR-driven fast heads, scores about 0 there. The models only differ in how they fail:
+  stay silent, or invent lists of small "lying" people. Every one of those degenerate outputs falls on these frames.
 
-  | seed | three images − camera + thermal | three images *with LiDAR switched off* − camera + thermal |
-  |---|---|---|
-  | 0 | +0.048 [+0.029, +0.068] | +0.040 [+0.020, +0.061] |
-  | 1 | +0.026 [+0.004, +0.048] | +0.030 [+0.011, +0.049] |
-  | 2 | +0.035 [+0.008, +0.062] | +0.032 [+0.007, +0.056] |
+  | F1, mean over 3 seeds (range) | 2,492 well-formed frames | well-formed forest (1,860) | dead-thermal forest (259) |
+  |---|---|---|---|
+  | camera + thermal as images | **0.546** (0.530–0.558) | **0.468** (0.442–0.491) | ≈ 0.01 |
+  | camera + thermal + LiDAR as images | 0.540 (0.535–0.543) | 0.462 (0.456–0.469) | ≈ 0.01 |
 
-  The gain survives with the LiDAR image blacked out at test time (on seed 1, LiDAR off even scores slightly higher:
-  0.512 vs 0.508), so it comes from *training* with a third image, not from using LiDAR when detecting.
-  A post-hoc diagnostic shows what that training effect is. Both models sometimes degenerate on dark forest frames into
-  lists of 5+ tiny, mostly invented people. The two-image model does this on 73–152 frames per seed, the three-image
-  model on 0–42. Blanking those frames' output (diagnostic only, not a deployed rule), the two-image model scores
-  0.52–0.55 and the three-image model 0.52–0.53. **The third image mainly makes this failure rarer; it does not add
-  detection ability.** Resampling whole sequences instead (only 6 in the test set) gives intervals
-  that include zero, so this is a small effect.
+  On well-formed frames the two models tie. LiDAR as an image adds nothing, and the three-image model's only edge was
+  hallucinating less on corrupted input. The fix is in the preprocessing: detect a dead thermal channel and treat it as
+  "thermal off" instead of stretching noise. I report both regimes separately from here on.
 - On the full report (box + posture + distance all correct) the two-image model is slightly better: 0.31 vs 0.29 (3-seed means).
 
 ![Sensor ladder](docs/media/fig_trisar_sensor_ladder.png)
@@ -210,8 +210,9 @@ nearly empty. **The teacher matters when the student is out of its depth.** That
 - **Camera dropout taught hallucination.** A fused VLM trained with 20 % camera dropout reported 3,373 people in the
   forest, nearly all wrong. Without dropout it reported none. Keeping labels on blacked-out frames teaches "black
   camera ⇒ people".
-- **LiDAR is still unused** by the VLM, even as an image (criterion A2 failed on 3 of 3 seeds). Its small gain comes from training with a third image, not from reading it.
-- **Precision on TriSAR** (0.52–0.60) is below the 0.70 bar.
+- **LiDAR is still unused** by the VLM, even as an image (criterion A2 failed on 3 of 3 seeds). Its apparent gain was a test-data artefact (dead-thermal frames), found by an independent review.
+- **Precision on TriSAR** (0.52–0.60, 0.56–0.60 on well-formed frames) is below the 0.70 bar.
+- **A preprocessing bug:** per-frame thermal normalisation turns a dead thermal channel into noise, and models hallucinate on it.
 - **Distillation on LLVIP** gave no F1 gain over self-training.
 - **Uncertainty-based escalation on TriSAR** lost to random escalation.
 - **Misaligned thermal is worse than no thermal** (LLVIP 0.53 vs 0.88): a sync fault is more dangerous than a dead camera.

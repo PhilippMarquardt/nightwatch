@@ -158,15 +158,13 @@ Before training the three-image model I wrote down three criteria:
 </table>
 </div>
 
-Three images still beat two, on every seed, by +0.03 to +0.05 F1 (paired bootstrap over 50-frame blocks, every
-interval above zero). So I tested where that gain comes from: I re-ran all three seeds on the full test set with the
-LiDAR image blacked out. The advantage barely moved (+0.03 to +0.04). **The model does not read LiDAR; training with a
-third image helped anyway**, which is a different and less flattering claim than "LiDAR helps". With only six test
-sequences, resampling whole sequences gives intervals that include zero, so it is a small effect. A look at the outputs
-explains it: on dark forest frames both models sometimes degenerate into lists of five or more tiny, mostly invented
-people. The two-image model does this on 73–152 frames per seed, the three-image model on 0–42. Blank those frames
-(as a diagnostic, not a deployed rule) and the two models tie at about 0.52–0.55. The third image makes that failure
-rarer; it does not add detection ability.
+Three images first seemed to beat two, on every seed, by +0.03 to +0.05 F1, and the lead survived with the LiDAR
+image blacked out. An independent review found the real reason. 259 forest test frames have a dead thermal channel,
+and my per-frame thermal normalisation stretches the sensor noise there into speckle the models never saw. The people
+in those frames are essentially invisible to every sensor (median 57 m away, 0 LiDAR points). Every model scores about
+zero there, and the models only differ in whether they stay silent or invent lists of tiny people. On the 2,492
+well-formed frames the two-image and three-image models tie (0.546 vs 0.540). **LiDAR as an image adds nothing**, and
+the bug to fix is in my preprocessing, not in the model.
 
 On the full report, where box, posture and distance must all be right, the camera + thermal model is slightly better
 (0.31 vs 0.29). My hypothesis for the ignored LiDAR is the frozen image encoder: it was pretrained on photos, and
