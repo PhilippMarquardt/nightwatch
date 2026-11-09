@@ -80,7 +80,9 @@ This is where it got interesting. Person F1 on 2,751 held-out frames:
 <tr><td>VLM fine-tuned, RGB + thermal + LiDAR</td><td>0.17</td><td>0.00</td><td><b>0.79</b></td></tr>
 <tr><td>… with camera-dropout 0.5</td><td>0.24</td><td>0.00</td><td>0.76</td></tr>
 <tr><td>Fast head, 12M (mean of 3 seeds, range)</td><td>0.36 (0.30–0.40)</td><td><b>0.30 (0.24–0.36)</b></td><td>0.56</td></tr>
-<tr><td><b>Combined</b> (3 seeds)</td><td><b>0.42 (0.35–0.46)</b></td><td>0.30 (0.24–0.35)</td><td>0.76</td></tr>
+<tr><td>Combined (3 seeds)</td><td>0.42 (0.35–0.46)</td><td>0.30 (0.24–0.35)</td><td>0.76</td></tr>
+<tr><td>Fast head + thermal normalisation (3 seeds)</td><td>0.42 (0.37–0.45)</td><td><b>0.37 (0.31–0.42)</b></td><td>0.56</td></tr>
+<tr><td><b>Combined, normalised fast head</b> (3 seeds)</td><td><b>0.47 (0.44–0.51)</b></td><td>0.37 (0.31–0.42)</td><td>0.76</td></tr>
 </tbody>
 </table>
 </div>
@@ -104,7 +106,7 @@ The fast head, on the other hand, runs on LiDAR. Switching LiDAR off drops it fr
 ## 6. Things that did not work
 
 - **Escalating the VLM only on uncertain frames.** Picking frames by fast-head uncertainty was *worse* than picking them at random. The fast head is uncertain in the forest, where the VLM abstains anyway; the VLM helps in the lab, where the fast head is confident but loosely localised. A useful escalation policy needs a router trained on validation outcomes.
-- **Test-time thermal level-matching for the fast head** (+0.046 forest F1 on one seed). Fast-head seeds alone move forest F1 between 0.24 and 0.36, so one seed proves nothing. A retrain with the level-matching built in runs on three seeds.
+- **Test-time thermal level-matching for the fast head** (+0.046 forest F1 on one seed). Fast-head seeds alone move forest F1 between 0.24 and 0.36, so one seed proves nothing. Building the level-matching into training as well, over three seeds, was clearer. Mean forest F1 rose from 0.30 to 0.37, with overlapping seed ranges. With LiDAR switched off, every normalised seed beat every plain one (0.26–0.31 vs 0.19–0.24). The thermal camera became a second sensor the model actually uses.
 - **Site-memory events I defined by hand.** The "person at the water's edge" region was wrong and fired on almost every frame. I excluded those numbers.
 
 ## 7. Site memory

@@ -20,7 +20,9 @@ posture and range. This window was chosen as the forest's best; the forest's ove
 | VLM fine-tuned, RGB + thermal + LiDAR | 0.17 | 0.11 | 0.00 | **0.79** |
 | … + camera-dropout 0.5 | 0.24 | 0.16 | 0.00 | 0.76 |
 | fast head, 12M (mean of 3 seeds, range) | 0.36 (0.30–0.40) | 0.33 (0.27–0.38) | **0.30 (0.24–0.36)** | 0.56 (0.55–0.57) |
-| **combined: VLM (camera-dropout) + non-overlapping fast detections** (3 seeds) | **0.42 (0.35–0.46)** | **0.37 (0.31–0.42)** | 0.30 (0.24–0.35) | 0.76 |
+| combined: VLM (camera-dropout) + non-overlapping fast detections (3 seeds) | 0.42 (0.35–0.46) | 0.37 (0.31–0.42) | 0.30 (0.24–0.35) | 0.76 |
+| fast head + per-frame thermal normalisation (3 seeds) | 0.42 (0.37–0.45) | 0.39 (0.35–0.43) | **0.37 (0.31–0.42)** | 0.56 (0.56–0.57) |
+| **combined: VLM (camera-dropout) + normalised fast head** (3 seeds) | **0.47 (0.44–0.51)** | **0.43 (0.39–0.47)** | 0.37 (0.31–0.42) | 0.76 |
 
 What the runs show:
 
@@ -35,8 +37,13 @@ What the runs show:
    fusion design itself can carry localisation: on LLVIP, the same side-branch fusion keeps **F1 0.80 with the camera
    off**. The TriSAR failure is specific to that setup (one epoch on 6k frames, a harder report task, and a large thermal
    domain gap), not a limit of the architecture.
-4. **The fast head runs on LiDAR.** Across 3 seeds, LiDAR off drops it from 0.30–0.40 to 0.19–0.24. Camera off changes
-   nothing. Thermal off gives 0.32–0.38, no worse than normal, because raw thermal shifts between sites.
+4. **The fast head runs on LiDAR, until thermal is normalised.** Across 3 seeds, LiDAR off drops the plain fast head
+   from 0.30–0.40 to 0.19–0.24, and thermal off does not hurt it, because raw thermal shifts between sites. A per-frame
+   thermal level match applied in training *and* inference makes thermal usable:
+   - With LiDAR off, every normalised seed (0.26–0.31) beats every plain seed.
+   - Mean forest F1 rises 0.30 → 0.37, though the seed ranges still overlap.
+   - Lab and validation scores do not move. Only the unseen site shows the difference.
+   - The trick was prompted by the forest failure, so it counts as a development result.
 5. **Escalating the VLM only on uncertain frames did not beat random escalation.** Fast-head doubt sits in the forest,
    where the VLM abstains. This is logged as a negative result.
 
