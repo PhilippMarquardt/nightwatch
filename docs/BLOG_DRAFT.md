@@ -131,8 +131,8 @@ Two details made this concrete:
 <tr><td>Fine-tuned, camera only</td><td>1</td><td>0.25</td><td>0.00</td><td>0.78</td><td>0.00</td></tr>
 <tr><td>Fine-tuned, side-branch fusion of thermal + LiDAR</td><td>2</td><td>0.26</td><td>0.00</td><td>0.81</td><td>0.00</td></tr>
 <tr><td>Fine-tuned, thermal as an image</td><td>1</td><td>0.41</td><td>0.33</td><td>0.82</td><td>n/a</td></tr>
-<tr><td>Fine-tuned, camera + thermal as images</td><td>1</td><td>0.48</td><td>0.39</td><td><b>0.86</b></td><td>0.78</td></tr>
-<tr><td><b>Fine-tuned, camera + thermal + LiDAR as images</b></td><td>2</td><td><b>0.52</b></td><td><b>0.44</b></td><td>0.84</td><td><b>0.79</b></td></tr>
+<tr><td>Fine-tuned, camera + thermal as images</td><td>3</td><td>0.48</td><td>0.40</td><td><b>0.85</b></td><td>0.77</td></tr>
+<tr><td><b>Fine-tuned, camera + thermal + LiDAR as images</b></td><td>3</td><td><b>0.52</b></td><td><b>0.44</b></td><td>0.84</td><td><b>0.79</b></td></tr>
 </tbody>
 </table>
 </div>
@@ -147,18 +147,24 @@ Before training the three-image model I wrote down three criteria:
 
 <div class="table-wrap">
 <table>
-<thead><tr><th>Criterion</th><th>Bar</th><th>Result (2 seeds)</th></tr></thead>
+<thead><tr><th>Criterion</th><th>Bar</th><th>Result (3 seeds)</th></tr></thead>
 <tbody>
-<tr><td>Works with the camera dead</td><td>lab F1 ≥ 0.50</td><td><b>pass</b>: 0.82 / 0.77</td></tr>
-<tr><td>Each extra sensor matters</td><td>thermal off and LiDAR off each cost ≥ 0.03</td><td><b>fail</b>: thermal matters (forest 0.43 → 0.15 without it), LiDAR does not (≤ 0.01)</td></tr>
-<tr><td>Few false alarms</td><td>precision ≥ 0.70</td><td><b>fail</b>: 0.60 / 0.54</td></tr>
+<tr><td>Works with the camera dead</td><td>lab F1 ≥ 0.50</td><td><b>pass</b> on every seed (0.77–0.82)</td></tr>
+<tr><td>Each extra sensor matters</td><td>thermal off and LiDAR off each cost ≥ 0.03</td><td><b>fail</b>: thermal matters (forest 0.43 → 0.15 without it), LiDAR does not (≤ 0.004 in the lab)</td></tr>
+<tr><td>Few false alarms</td><td>precision ≥ 0.70</td><td><b>fail</b> on every seed (0.52–0.60)</td></tr>
 </tbody>
 </table>
 </div>
 
-On the full report, where box, posture and distance must all be right, the camera + thermal model is best (0.32 vs
-0.28–0.29 for three images, whose distance error is larger). My hypothesis for the ignored LiDAR is the frozen image
-encoder: it was pretrained on photos, and nothing taught it to read a colour-coded range image.
+Three images still beat two, on every seed, by +0.03 to +0.05 F1 (paired bootstrap over 50-frame blocks, every
+interval above zero). So I tested where that gain comes from: I re-ran all three seeds on the full test set with the
+LiDAR image blacked out. The advantage barely moved (+0.03 to +0.04). **The model does not read LiDAR; training with a
+third image helped anyway**, which is a different and less flattering claim than "LiDAR helps". With only six test
+sequences, resampling whole sequences gives intervals that include zero, so it is a small effect.
+
+On the full report, where box, posture and distance must all be right, the camera + thermal model is slightly better
+(0.31 vs 0.29). My hypothesis for the ignored LiDAR is the frozen image encoder: it was pretrained on photos, and
+nothing taught it to read a colour-coded range image.
 
 **The fast head on TriSAR runs on LiDAR.** Switching LiDAR off drops it from 0.37 to 0.22; switching the camera off
 changes nothing. A per-frame thermal level match in training and inference made thermal a second sensor it uses:
@@ -236,7 +242,7 @@ helped on LLVIP hurts here, because a student that barely fires vetoes most real
   camera dropout, keeping the lab people as targets on black frames. Without dropout the same model reported **zero**.
   The augmentation taught "black camera ⇒ there are people", and only an unseen site exposed it.
 - **My side-branch fusion** lost to plain multi-image input on LLVIP and was ignored on TriSAR.
-- **LiDAR is still unused** by the VLM, even as an image, and TriSAR precision (0.54–0.60) is below my bar.
+- **LiDAR is still unused** by the VLM, even as an image, and TriSAR precision (0.52–0.60) is below my bar.
 - **Single seeds lie.** One student seed gave 0.866 and looked like "the student matches the oracle"; another gave
   0.830. Every claim here uses three seeds or a paired bootstrap.
 - **Hand-defined site-memory events.** A "person at the water's edge" region was wrong and fired on almost every

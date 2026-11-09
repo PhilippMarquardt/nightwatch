@@ -117,22 +117,35 @@ Metric: person F1 at IoU 0.5 unless stated.
 | fine-tuned, camera only | 1 | 0.25 | 0.00 | 0.78 | 0.00 | 0.78 |
 | fine-tuned, side-branch fusion of thermal + LiDAR | 2 | 0.26 | 0.00 | 0.81 | 0.00 | 0.82 |
 | fine-tuned, thermal as an image | 1 | 0.41 | 0.33 | 0.82 | n/a | 0.37 |
-| fine-tuned, camera + thermal as images | 1 | 0.48 | 0.39 | **0.86** | 0.78 | 0.48 |
-| **fine-tuned, camera + thermal + LiDAR as images** | 2 | **0.52** (0.51–0.53) | **0.44** (0.43–0.44) | 0.84 | **0.79** (0.77–0.82) | 0.57 |
+| fine-tuned, camera + thermal as images | 3 | 0.48 (0.48–0.48) | 0.40 (0.39–0.40) | **0.85** (0.82–0.86) | 0.77 (0.76–0.78) | 0.46 |
+| **fine-tuned, camera + thermal + LiDAR as images** | 3 | **0.52** (0.51–0.53) | **0.44** (0.43–0.44) | 0.84 (0.83–0.85) | **0.79** (0.77–0.82) | 0.55 |
+
+Mean (range) over seeds; "lab, camera dead" is on the fixed 600-frame robustness subset.
 
 - **The input route decides whether the VLM uses a sensor.** As a side branch, thermal and LiDAR were ignored:
   switching them off changed lab F1 by < 0.03, and with the camera dead the model output one memorised box.
   As images, the same thermal data lets the VLM see in the black forest for the first time.
-- **Pre-registered criteria for the three-image model:**
+- **Pre-registered criteria for the three-image model (3 seeds):**
 
   | criterion | bar | result |
   |---|---|---|
-  | A1: works with the camera dead | lab F1 ≥ 0.50 | **pass** (0.82 / 0.77) |
-  | A2: each extra sensor matters | thermal off and LiDAR off each cost ≥ 0.03 | **fail**: thermal matters (forest 0.43 → 0.15 without it); LiDAR does not (≤ 0.01) |
-  | A3: few false alarms | precision ≥ 0.70 | **fail** (0.60 / 0.54) |
+  | A1: works with the camera dead | lab F1 ≥ 0.50 | **pass** on 3/3 seeds (0.77–0.82) |
+  | A2: each extra sensor matters | thermal off and LiDAR off each cost ≥ 0.03 | **fail**: thermal matters on 3/3 seeds (forest 0.43 → 0.15 without it); LiDAR off costs ≤ 0.004 in the lab |
+  | A3: few false alarms | precision ≥ 0.70 | **fail** on 3/3 seeds (0.52–0.60) |
 
-- On the full report (box + posture + distance all correct) the two-image model is best: 0.316 vs 0.28–0.29 for three
-  images, whose distance error is larger.
+- **Adding LiDAR as a third image helps, but not because the model reads LiDAR.** Paired bootstrap over 50-frame
+  blocks of the 2,751 test frames, per seed:
+
+  | seed | three images − camera + thermal | three images *with LiDAR switched off* − camera + thermal |
+  |---|---|---|
+  | 0 | +0.048 [+0.029, +0.068] | +0.040 [+0.020, +0.061] |
+  | 1 | +0.026 [+0.004, +0.048] | +0.030 [+0.011, +0.049] |
+  | 2 | +0.035 [+0.008, +0.062] | +0.032 [+0.007, +0.056] |
+
+  The gain survives with the LiDAR image blacked out at test time, so it comes from *training* with a third image,
+  not from using LiDAR when detecting. Resampling whole sequences instead (only 6 in the test set) gives intervals
+  that include zero, so this is a small effect.
+- On the full report (box + posture + distance all correct) the two-image model is slightly better: 0.31 vs 0.29 (3-seed means).
 
 ![Sensor ladder](docs/media/fig_trisar_sensor_ladder.png)
 
@@ -189,8 +202,8 @@ nearly empty. **The teacher matters when the student is out of its depth.** That
 - **Camera dropout taught hallucination.** A fused VLM trained with 20 % camera dropout reported 3,373 people in the
   forest, nearly all wrong. Without dropout it reported none. Keeping labels on blacked-out frames teaches "black
   camera ⇒ people".
-- **LiDAR is still unused** by the VLM, even as an image (criterion A2 failed on 2 seeds).
-- **Precision on TriSAR** (0.54–0.60) is below the 0.70 bar.
+- **LiDAR is still unused** by the VLM, even as an image (criterion A2 failed on 3 of 3 seeds). Its small gain comes from training with a third image, not from reading it.
+- **Precision on TriSAR** (0.52–0.60) is below the 0.70 bar.
 - **Distillation on LLVIP** gave no F1 gain over self-training.
 - **Uncertainty-based escalation on TriSAR** lost to random escalation.
 - **Misaligned thermal is worse than no thermal** (LLVIP 0.53 vs 0.88): a sync fault is more dangerous than a dead camera.
