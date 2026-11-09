@@ -185,7 +185,11 @@ def load_slow_head(model_path: str, mode: str, lora: dict | None = None, adapter
         model = model.merge_and_unload()          # inference: fold LoRA into the weights
     elif lora:
         from peft import LoraConfig, get_peft_model
+        target = r".*language_model.*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj|in_proj_qkv|in_proj_z|out_proj)"
+        if os.environ.get("NW_VISION_LORA"):     # 2026-11-09: also adapt the ViT (27 blocks + patch merger)
+            target = (r"(" + target + r")|(.*visual\.(blocks\.\d+\.(attn\.(qkv|proj)|mlp\.linear_fc[12])"
+                      r"|merger\.linear_fc[12]))")
         cfg = LoraConfig(r=lora["r"], lora_alpha=lora.get("alpha", 2 * lora["r"]), lora_dropout=lora.get("dropout", 0.05),
-                         target_modules=r".*language_model.*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj|in_proj_qkv|in_proj_z|out_proj)")
+                         target_modules=target)
         model = get_peft_model(model, cfg)
     return model, proc, fusion
