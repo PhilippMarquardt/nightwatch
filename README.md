@@ -67,7 +67,7 @@ What the runs show:
 | 12M fast head, 7 labelled sites (3 seeds) | 0.82 (0.80–0.83) | | 0.83 (s0) | 0.77 (0.75–0.79) |
 | … same, trained for as many steps as the pseudo-label students | 0.84* | | 0.83* | |
 | 12M fast head, self-training on the 11 unlabeled sites (control) | 0.864 | 0.82–0.89 | 0.85* | 0.841 |
-| 12M student of the 9B, consensus-filtered labels on 11 unlabeled sites (seeds 0 / 1) | 0.866 / 0.834 | 0.83–0.89 (s0) | 0.85* (s0) | 0.852 (s0) |
+| 12M student of the 9B, consensus-filtered labels on 11 unlabeled sites (seeds 0 / 1 / 2) | 0.866 / 0.834 / 0.87 | 0.83–0.89 (s0) | 0.85* (s0) | 0.852 (s0) |
 | 12M fast head, human labels on all 18 sites (oracle) | 0.857 | 0.83–0.88 | 0.84* | 0.839 |
 
 - **Most of the gain over zero-shot is fine-tuning** (RGB-only: +0.043). Fusion adds +0.012 overall [−0.022, +0.065],
@@ -83,7 +83,7 @@ What the runs show:
 - Thermal as a plain second image *hurts* zero-shot on all 7 sites.
 - **Distillation from the 9B did not beat self-training on F1.** Pseudo-labelling the 11 unlabeled sites closes the gap
   to the human-label oracle, but the 12M head's own labels do it equally well (0.864 vs 0.866 for the consensus-filtered
-  9B labels, Δ +0.002 [−0.010, +0.019], same frames), and a second seed of the consensus student falls back to 0.83. The
+  9B labels, Δ +0.002 [−0.010, +0.019], same frames), and one of three consensus seeds falls back to 0.83 when its validation threshold lands high. The
   pre-registered self-training control caught this. What the teacher reliably transfers is ranking quality: AP50 0.90–0.91
   for all four VLM-labelled students (oracle 0.912), against 0.893 for self-training and 0.877 labelled-only. The F1
   operating point does not survive a one-site validation set. Its labels on the unlabeled sites (F1 0.82 vs withheld
