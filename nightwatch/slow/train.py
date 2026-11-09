@@ -147,7 +147,11 @@ def main():
                 for p in train_params:
                     if p.grad is not None:
                         dist.all_reduce(p.grad, op=dist.ReduceOp.AVG)
-            gn = torch.nn.utils.clip_grad_norm_(train_params, 1.0)
+            if vis_mult != 1.0:   # clip LM and vision LoRA separately, so large ViT gradients do not shrink LM updates
+                gns = [torch.nn.utils.clip_grad_norm_(g["params"], 1.0) for g in groups]
+                gn = torch.sqrt(sum(x.float() ** 2 for x in gns))
+            else:
+                gn = torch.nn.utils.clip_grad_norm_(train_params, 1.0)
             lr_scale = min(1.0, (step + 1) / a.warmup) * 0.5 * (1 + math.cos(math.pi * min(1.0, step / total)))
             for g in opt.param_groups:
                 g["lr"] = g["base_lr"] * lr_scale
