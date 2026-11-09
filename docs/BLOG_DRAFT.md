@@ -75,13 +75,13 @@ Two details made this concrete:
 
 ## 4. LLVIP: distilling the VLM into the fast head
 
-The fused VLM labelled 8,164 frames from 11 sites whose labels I withheld. A 12M fast head then trained on them. Two controls decide what that proves. **Self-training**: the small head labels the same frames itself. **Compute-matched**: the labelled-only head trained for as many steps. Same 1,500 test frames, seed ranges where I have three seeds:
+The fused VLM labelled 8,164 frames from 11 sites whose labels I withheld. A 12M fast head then trained on them. Two controls decide what that proves. **Self-training**: the small head labels the same frames itself. **Compute-matched**: the labelled-only head trained for as many steps. Full test set (3,463 frames, 7 unseen sites); mean and range over three seeds where I have them:
 
 <div class="table-wrap">
 <table>
 <thead><tr><th>12M fast head, labels on the 11 extra sites</th><th>F1</th><th>AP50</th></tr></thead>
 <tbody>
-<tr><td>none (7 labelled sites only)</td><td>0.82 (0.80–0.83)</td><td>0.87</td></tr>
+<tr><td>none (7 labelled sites only)</td><td>0.82 (0.81–0.83)</td><td>0.87</td></tr>
 <tr><td>none, trained for as many steps (compute-matched)</td><td>0.84</td><td>0.89</td></tr>
 <tr><td>its own labels (self-training)</td><td><b>0.86</b></td><td>0.89</td></tr>
 <tr><td>VLM labels</td><td>0.83 (0.83–0.84)</td><td><b>0.91</b></td></tr>
