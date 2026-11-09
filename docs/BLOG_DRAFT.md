@@ -16,7 +16,7 @@ I set out to answer three questions:
 <table>
 <thead><tr><th></th><th>Question</th><th>Short answer</th></tr></thead>
 <tbody>
-<tr><td><b>Fusion</b></td><td>How should a 9B VLM receive thermal and LiDAR so that it actually uses them?</td><td>Thermal as an extra image works, where my custom fusion branch lost or was ignored. LiDAR as an image is still ignored; a native point-cloud encoder is the open test.</td></tr>
+<tr><td><b>Fusion</b></td><td>How should a 9B VLM receive thermal and LiDAR so that it actually uses them?</td><td>Thermal as an extra image works, where my custom fusion branch lost or was ignored. LiDAR is ignored, as an image and as native point-cloud tokens.</td></tr>
 <tr><td><b>Distillation</b></td><td>Can the VLM teach a small edge detector?</td><td>On familiar data, no better than self-training. On a truly new site, yes: F1 0.13 → 0.46 without a single human label.</td></tr>
 <tr><td><b>New sites</b></td><td>Does it hold up where it was never trained?</td><td>Partly. In an unseen forest at night the VLM goes from blind (0.00) to 0.44. At an unseen harbour, 75 % of the gap to human labels is closed.</td></tr>
 </tbody>
@@ -166,6 +166,17 @@ zero there, and the models only differ in whether they stay silent or invent lis
 well-formed frames the two-image and three-image models tie (0.546 vs 0.540). **LiDAR as an image adds nothing**, and
 the bug to fix is in my preprocessing, not in the model.
 
+**Last try: a native point-cloud encoder.** Point-cloud foundation models are the natural native encoder for LiDAR, so I
+fed the raw LiDAR through Utonia, a self-supervised point-cloud transformer, frozen, and let a small trained projector
+put its features into the LiDAR image's token slots. First I checked the features are worth it. A linear probe for
+"person in this cell" scores AP 0.77 on lab validation, against 0.27 for the range image the VLM had been reading
+(forest: 0.43 vs 0.10). The VLM still ignored them: switching LiDAR off cost 0.007 and 0.012 lab F1 on two seeds,
+below the 0.03 I set in advance, and distance error did not improve. The features carry the signal; one epoch of
+training does not teach the language model to read them. My best explanation is that nothing forces it to: camera and
+thermal already suffice in the lab, and my dropout never leaves LiDAR alone. That is the next experiment.
+
+![Utonia point-cloud features per VLM token, next to the range image the VLM got](/nightwatch/fig_utonia_tokens.png)
+
 On the full report, where box, posture and distance must all be right, the camera + thermal model is slightly better
 (0.31 vs 0.29). My hypothesis for the ignored LiDAR is the frozen image encoder: it was pretrained on photos, and
 nothing taught it to read a colour-coded range image.
@@ -246,7 +257,7 @@ helped on LLVIP hurts here, because a student that barely fires vetoes most real
   camera dropout, keeping the lab people as targets on black frames. Without dropout the same model reported **zero**.
   The augmentation taught "black camera ⇒ there are people", and only an unseen site exposed it.
 - **My side-branch fusion** lost to plain multi-image input on LLVIP and was ignored on TriSAR.
-- **LiDAR is still unused** by the VLM, even as an image, and TriSAR precision (0.52–0.60) is below my bar.
+- **LiDAR is still unused** by the VLM, as an image and as native point-cloud tokens, and TriSAR precision (0.52–0.60) is below my bar.
 - **Single seeds lie.** One student seed gave 0.866 and looked like "the student matches the oracle"; another gave
   0.830. Every claim here uses three seeds or a paired bootstrap.
 - **Hand-defined site-memory events.** A "person at the water's edge" region was wrong and fired on almost every

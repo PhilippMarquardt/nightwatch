@@ -10,7 +10,7 @@ Three questions drive every experiment:
 
 | | question | short answer |
 |---|---|---|
-| **Q1 Fusion** | How should a 9B VLM receive thermal and LiDAR so that it actually *uses* them? | Feed thermal as its own image: that works where a custom fusion branch lost or was ignored. LiDAR fed as an image is still ignored; a native point-cloud encoder is the open test. |
+| **Q1 Fusion** | How should a 9B VLM receive thermal and LiDAR so that it actually *uses* them? | Feed thermal as its own image: that works where a custom fusion branch lost or was ignored. LiDAR is ignored, both as an image and as native point-cloud tokens, after one epoch. |
 | **Q2 Distillation** | Can the VLM teach a small edge detector? | On familiar data, not better than self-training (F1 0.85 vs 0.86). On a truly new site, yes: F1 0.13 → 0.46 with no human labels. |
 | **Q3 New sites** | Does it hold up where it was never trained? | Partly. Unseen forest at night: 0.00 → 0.44 F1 once thermal enters as an image (the forest also guided development). Untouched harbour: 75 % of the gap to human labels closed. |
 
@@ -153,6 +153,21 @@ Mean (range) over seeds; "lab, camera dead" is on the fixed 600-frame robustness
   On well-formed frames the two models tie. LiDAR as an image adds nothing, and the three-image model's only edge was
   hallucinating less on corrupted input. The fix is in the preprocessing: detect a dead thermal channel and treat it as
   "thermal off" instead of stretching noise. I report both regimes separately from here on.
+- **A native point-cloud encoder: the features carry the signal, but the VLM still does not read them.** Point-cloud foundation models are the natural native encoder for
+  LiDAR, so the last test fed LiDAR through **Utonia** (a self-supervised Point
+  Transformer V3, ICML 2026), frozen. Its features for each 32-px cell replace the LiDAR image's tokens, through a
+  trained projector. Criteria were fixed in advance.
+  - **The features are rich.** A linear probe for "person in this cell" reaches AP 0.77 on lab validation, against 0.27
+    for statistics of the range image the VLM had been given (forest test: 0.43 vs 0.10).
+  - **The VLM ignores them anyway.** Switching LiDAR off costs 0.007 and 0.012 lab F1 on the two seeds (bar: 0.03), and
+    distance error does not improve (6.3 / 4.2 m vs 3.2–4.4 m). Overall F1 does not regress (0.565 / 0.524 vs 0.522–0.530
+    for three images). Seed 0's lead survives LiDAR-off, so it is not LiDAR use either.
+  - **Likely reasons:** nothing in training forces LiDAR use, because camera + thermal already suffice in the lab and
+    my sensor dropout never leaves LiDAR alone. The projected tokens also drifted to 10–17× the image-token scale. The
+    next run would drop camera and thermal together on some samples and norm-match the projector.
+
+  ![Utonia point-cloud features per VLM token (PCA), next to the range image the VLM got](docs/media/fig_utonia_tokens.png)
+
 - On the full report (box + posture + distance all correct) the two-image model is slightly better: 0.31 vs 0.29 (3-seed means).
 
 ![Sensor ladder](docs/media/fig_trisar_sensor_ladder.png)
@@ -210,7 +225,7 @@ nearly empty. **The teacher matters when the student is out of its depth.** That
 - **Camera dropout taught hallucination.** A fused VLM trained with 20 % camera dropout reported 3,373 people in the
   forest, nearly all wrong. Without dropout it reported none. Keeping labels on blacked-out frames teaches "black
   camera ⇒ people".
-- **LiDAR is still unused** by the VLM, even as an image (criterion A2 failed on 3 of 3 seeds). Its apparent gain was a test-data artefact (dead-thermal frames), found by an independent review.
+- **LiDAR is still unused** by the VLM, as an image (3 of 3 seeds) and as native Utonia point-cloud tokens (2 of 2 seeds). Its apparent gain was a test-data artefact (dead-thermal frames), found by an independent review.
 - **Precision on TriSAR** (0.52–0.60, 0.56–0.60 on well-formed frames) is below the 0.70 bar.
 - **A preprocessing bug:** per-frame thermal normalisation turns a dead thermal channel into noise, and models hallucinate on it.
 - **Distillation on LLVIP** gave no F1 gain over self-training.
