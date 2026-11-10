@@ -24,6 +24,8 @@ from PIL import Image
 sys.path.insert(0, "/root/Utonia")
 from nightwatch.data.trisar import TH, TW, cam_pose, intrinsics, lidar_to_pixels, read_pcd, scaled_K
 
+PACK = os.environ.get("NW_PC_PACK")
+PACK_META = json.load(open(os.path.join(PACK, "meta.json"))) if PACK else None
 CELL = 32
 GH, GW = TH // CELL, TW // CELL          # 16 x 20 = 320 tokens, row-major like the merged ViT grid
 
@@ -65,7 +67,7 @@ def encode(model, transform, xyz, inten):
 
 def project(rec, xyz, max_range=60.0):
     """Same thermal reference frame as nightwatch.data.trisar.render -> (cell index per point, valid mask)."""
-    tw, th_ = Image.open(rec["thermal"]).size
+    tw, th_ = rec["th_size"] if "th_size" in rec else Image.open(rec["thermal"]).size
     Kt, _ = intrinsics(rec["cal_th"])
     Kt = scaled_K(Kt, rec["wh_th"], (tw, th_))
     Kref = Kt.copy(); Kref[0] *= TW / tw; Kref[1] *= TH / th_
@@ -76,13 +78,21 @@ def project(rec, xyz, max_range=60.0):
     return cell, ok
 
 
-def pool(feat, cell, ok):
+def pool(feat, cell, ok, xyz):
+    """-> feat (320, D) mean-pooled, count (320,), geo (320, 3) = [min range, mean range, mean height] in metres
+    (LiDAR frame; 0 where the cell has no return). geo gives the VLM metric range explicitly (tri_pc3)."""
     D = feat.shape[1]
     out = torch.zeros(GH * GW, D); cnt = torch.zeros(GH * GW)
     c = torch.from_numpy(cell[ok]); f = feat[torch.from_numpy(ok)]
     out.index_add_(0, c, f); cnt.index_add_(0, c, torch.ones(len(c)))
     out = out / cnt.clamp(min=1).unsqueeze(1)
-    return out.half().numpy(), cnt.short().numpy()
+    p = torch.from_numpy(xyz[ok].astype(np.float32))
+    r = p.norm(dim=1)
+    rmin = torch.full((GH * GW,), 1e9).scatter_reduce(0, c, r, reduce="amin")
+    rmean = torch.zeros(GH * GW).index_add_(0, c, r) / cnt.clamp(min=1)
+    zmean = torch.zeros(GH * GW).index_add_(0, c, p[:, 2]) / cnt.clamp(min=1)
+    geo = torch.stack([torch.where(cnt > 0, rmin, torch.zeros(())), rmean, zmean], 1)
+    return out.half().numpy(), cnt.short().numpy(), geo.half().numpy()
 
 
 def main():
@@ -107,18 +117,23 @@ def main():
         if os.path.exists(dst) and not a.smoke:
             try:                                   # a killed run can leave a truncated file
                 z = np.load(dst)
-                if z["feat"].shape == (GH * GW, 1224) and z["count"].shape == (GH * GW,):
+                if z["feat"].shape == (GH * GW, 1224) and z["count"].shape == (GH * GW,) and z["geo"].shape == (GH * GW, 3):
                     continue
             except Exception:
                 pass
         rec = recs[fid]
-        xyz, inten = read_pcd(rec["lidar"])
+        if PACK:      # quantised clouds uploaded from another machine (scripts/pc_pack.py): 5 mm xyz, uint16 intensity
+            zz = np.load(os.path.join(PACK, f"{fid}.npz"))
+            xyz, inten = zz["xyz"].astype(np.float64) * PACK_META["quant_m"], zz["inten"].astype(np.float32) / 65535.0
+            rec = {**rec, "th_size": PACK_META["thermal_size"][fid]}
+        else:
+            xyz, inten = read_pcd(rec["lidar"])
         ts = time.time()
         feat = encode(model, transform, xyz, inten)
         te = time.time() - ts
         cell, ok = project(rec, xyz)
-        g, cnt = pool(feat, cell, ok)
-        np.savez_compressed(dst, feat=g, count=cnt)
+        g, cnt, geo = pool(feat, cell, ok, xyz)
+        np.savez_compressed(dst, feat=g, count=cnt, geo=geo)
         if a.smoke:
             print(f"{fid}: points {len(xyz)}, in thermal view {ok.sum()}, feat dim {feat.shape[1]}, "
                   f"cells with points {int((cnt > 0).sum())}/320, encode {te:.2f}s, "

@@ -52,6 +52,10 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--drop-rgb", type=float, default=None, help="camera-dropout probability (TriSAR default 0.2)")
     ap.add_argument("--wandb", action="store_true")
+    ap.add_argument("--init", default=None, help="tri_pc3: start from this run dir (fusion.pt, and its LoRA if present)")
+    ap.add_argument("--init-no-lora", action="store_true", help="tri_pc3b: take only fusion.pt from --init; LoRA starts fresh")
+    ap.add_argument("--pc-aux", type=float, default=0.0, help="tri_pc3: weight of the per-cell aux loss on LiDAR tokens")
+    ap.add_argument("--pc-wd", type=float, default=0.0, help="tri_pc3: weight decay of the point-cloud projector")
     a = ap.parse_args()
 
     ddp = int(os.environ.get("WORLD_SIZE", "1")) > 1
@@ -65,6 +69,18 @@ def main():
     seed_all(a.seed + rank)
 
     model, proc, fusion = load_slow_head(a.model, a.mode, lora={"r": a.lora_r}, device=dev, grad_ckpt=a.grad_ckpt)
+    if a.init:
+        if fusion is not None and os.path.exists(os.path.join(a.init, "fusion.pt")):
+            sd = torch.load(os.path.join(a.init, "fusion.pt"), map_location=dev)
+            sd.pop("norm_match", None)                      # the buffer follows this run's NW_PC_NORMMATCH
+            print("init fusion:", fusion.load_state_dict(sd, strict=False), flush=True)
+        wf = os.path.join(a.init, "adapter_model.safetensors")
+        if os.path.exists(wf) and not a.init_no_lora:
+            from peft import set_peft_model_state_dict
+            from safetensors.torch import load_file
+            res = set_peft_model_state_dict(model, load_file(wf, device=str(dev)))
+            print("init LoRA:", len(getattr(res, "unexpected_keys", []) or []), "unexpected keys", flush=True)
+            assert not (getattr(res, "unexpected_keys", None) or []), "LoRA init: keys did not match"
     if fusion is not None:
         fusion.train()
     if a.dataset == "trisar":
@@ -99,7 +115,7 @@ def main():
     else:
         groups = [{"params": [p for n, p in trainable], "lr": a.lr, "name": "lora"}]
     if fusion is not None and a.mode == "tri_pc":
-        groups += [{"params": list(fusion.parameters()), "lr": a.lr_pc, "name": "pc_proj", "weight_decay": 0.0}]
+        groups += [{"params": list(fusion.parameters()), "lr": a.lr_pc, "name": "pc_proj", "weight_decay": a.pc_wd}]
     elif fusion is not None:
         enc = list(fusion.encoder.parameters())
         gates = [fusion.main.gate] + [p.gate for p in fusion.deep]
@@ -121,7 +137,8 @@ def main():
         print(f"mode={a.mode} samples={len(ds)} steps={total} trainable={n_train/1e6:.1f}M", flush=True)
         cfg = {**vars(a), "vision_lora": bool(os.environ.get("NW_VISION_LORA")), "vis_lr_mult": vis_mult,
                "clip_mode": "per_group" if per_group else "global", "multi_drop": os.environ.get("NW_MULTI_DROP", "0.3"),
-               "lidar_only_p": os.environ.get("NW_LIDAR_ONLY_P", "0"), "pc_norm_match": os.environ.get("NW_PC_NORMMATCH", "0")}
+               "lidar_only_p": os.environ.get("NW_LIDAR_ONLY_P", "0"), "pc_norm_match": os.environ.get("NW_PC_NORMMATCH", "0"),
+               "pc_geo": os.environ.get("NW_PC_GEO", "0")}
         log = RunLogger(a.out, cfg, use_wandb=(True if a.wandb else None), project="nightwatch")
 
     if ddp:
@@ -139,6 +156,7 @@ def main():
             th = batch.pop("thermal").to(dev, non_blocking=True)
             li = batch.pop("lidar", None)
             li = li.to(dev, non_blocking=True) if li is not None else None
+            cell_y, cell_r = batch.pop("cell_y", None), batch.pop("cell_r", None)
             batch = {k: v.to(dev, non_blocking=True) for k, v in batch.items()}
             if fusion is not None:
                 fusion.set_thermal(th)
@@ -146,6 +164,10 @@ def main():
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 out = model(**batch)
                 loss = out.loss / a.grad_accum
+            aux_rec = {}
+            if a.pc_aux > 0 and cell_y is not None and getattr(fusion, "_aux", None) is not None:
+                aux, aux_rec = fusion.aux_loss(cell_y, cell_r)
+                loss = loss + a.pc_aux * aux / a.grad_accum
             loss.backward()
             micro += 1
             if micro % a.grad_accum:
@@ -167,7 +189,7 @@ def main():
             opt.zero_grad(set_to_none=True)
             step += 1
             if rank == 0 and (step % 5 == 0 or step == 1):
-                rec = {"step": step, "loss": loss.item() * a.grad_accum, "grad_norm": float(gn), **(gn_groups if per_group else {}),
+                rec = {"step": step, "loss": out.loss.item(), **aux_rec, "grad_norm": float(gn), **(gn_groups if per_group else {}),
                        "lr": opt.param_groups[0]["lr"], "elapsed_s": time.time() - t0,
                        "samples_per_s": step * a.grad_accum * a.bs * (dist.get_world_size() if ddp else 1) / (time.time() - t0)}
                 if fusion is not None:

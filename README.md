@@ -10,7 +10,7 @@ Three questions drive every experiment:
 
 | | question | short answer |
 |---|---|---|
-| **Q1 Fusion** | How should a 9B VLM receive thermal and LiDAR so that it actually *uses* them? | Feed thermal as its own image: that works where a custom fusion branch lost or was ignored. LiDAR is ignored: as an image, as native point-cloud tokens, and even when training forces LiDAR-only samples. |
+| **Q1 Fusion** | How should a 9B VLM receive thermal and LiDAR so that it actually *uses* them? | Feed thermal as its own image: that works where a custom fusion branch lost or was ignored. LiDAR took three attempts: the VLM ignored it until the point-cloud tokens were pre-aligned to its visual tokens and it was trained on LiDAR alone first. It then reads LiDAR and ranges better with it, but on the unseen forest it turns clutter into people. |
 | **Q2 Distillation** | Can the VLM teach a small edge detector? | On familiar data, not better than self-training (F1 0.85 vs 0.86). On a truly new site, yes: F1 0.13 → 0.46 with no human labels. |
 | **Q3 New sites** | Does it hold up where it was never trained? | Partly. Unseen forest at night: 0.00 → 0.44 F1 once thermal enters as an image (the forest also guided development). Untouched harbour: 75 % of the gap to human labels closed. |
 
@@ -171,6 +171,40 @@ Mean (range) over seeds; "lab, camera dead" is on the fixed 600-frame robustness
     F1, +0.052 / +0.039 over three images on the same seeds, forest +0.067 / +0.052 (block-bootstrap CIs exclude 0).
     The gain survives LiDAR-off, so it comes from the training regime (frames with camera and thermal both missing),
     not from reading LiDAR. The same regime without LiDAR was not run, so its exact source is untested.
+  - **Third attempt: pre-align the tokens, then train on LiDAR alone, then on everything.** In the failed runs the
+    projector's gradient fell 50–100× within 100–200 steps (camera + thermal already solve the lab), and the LiDAR-only
+    samples amounted to about 36 optimiser steps. The new recipe has three stages: (0) the projector alone learns to
+    produce, per cell, the frozen ViT's token of the thermal image at that cell, plus a per-cell person / range head
+    (`nightwatch/slow/pc_align.py`, 17 min, no LM); (1) two epochs with LiDAR as the only sensor; (2) one epoch on all
+    three sensors. Tokens also carry each cell's measured range. Criteria were fixed before training; one seed.
+
+    LiDAR as the only sensor, lab validation (693 frames):
+
+    | LiDAR input, trained as the only sensor | F1 | distance MAE | recall 20–40 m |
+    |---|---|---|---|
+    | **Utonia tokens, pre-aligned** | **0.476** | 0.85 m | **0.31** |
+    | range image through the ViT | 0.432 | 0.80 m | 0.15 |
+    | Utonia tokens, no pre-alignment | 0.141 | 1.56 m | 0.10 |
+
+    Pre-alignment is what makes the tokens readable. The range image is read almost as well once it is the only
+    input, so the earlier "ignored" results were about training pressure, not about the encoder.
+
+    Three-sensor model on the test set (2,751 frames; LiDAR-only on the 600-frame subset):
+
+    | | all F1 | held-out lab | unseen forest | forest precision | forest distance MAE |
+    |---|---|---|---|---|---|
+    | second attempt (ignores LiDAR), seed 0 | **0.581** | 0.864 | **0.513** | 0.54 | 10.2 m |
+    | **third attempt, all sensors** | 0.304 | 0.862 | 0.205 | 0.17 | **1.8 m** |
+    | third attempt, LiDAR off | 0.563 | 0.847 | 0.479 | 0.68 | 4.5 m |
+    | third attempt, LiDAR only | 0.125 | 0.491 | 0.054 | 0.04 | – |
+
+    Against the pre-registered bars: LiDAR alone works in the lab (0.491 ≥ 0.30, **pass**), distance improves
+    (1.26 m overall vs the 3.19 m bar, **pass**; LiDAR-off costs 1.9 m), but all-frame F1 fails (0.304 < 0.522)
+    because of the forest, and LiDAR-off costs only 0.023 in the lab (bar 0.03, **fail**). The model now reads people
+    out of forest point clouds it has never seen the like of. Two variants of the last stage did not change that:
+    carrying the LiDAR-only LoRA into stage 2 also hurt the lab (0.638); dropping the LiDAR-only samples from stage 2
+    left the forest where it was (forest F1 0.273 at precision 0.23, against 0.462 with LiDAR off). **The VLM can be made to use LiDAR; using it well on a new site is
+    a separate, unsolved problem.** The best all-round detector remains the second attempt.
 
   ![Utonia point-cloud features per VLM token (PCA), next to the range image the VLM got](docs/media/fig_utonia_tokens.png)
 
@@ -231,7 +265,7 @@ nearly empty. **The teacher matters when the student is out of its depth.** That
 - **Camera dropout taught hallucination.** A fused VLM trained with 20 % camera dropout reported 3,373 people in the
   forest, nearly all wrong. Without dropout it reported none. Keeping labels on blacked-out frames teaches "black
   camera ⇒ people".
-- **LiDAR is still unused** by the VLM, as an image (3 of 3 seeds) and as native Utonia point-cloud tokens (2 of 2 seeds). Its apparent gain was a test-data artefact (dead-thermal frames), found by an independent review.
+- **LiDAR in the VLM is half solved.** As an image (3 of 3 seeds) and as native Utonia tokens (2 of 2 seeds) it was ignored, and its apparent gain was a test-data artefact (dead-thermal frames), found by an independent review. With pre-aligned tokens and a LiDAR-only training stage the VLM reads it (1 seed), improves range, and then over-reports people on the unseen forest.
 - **Precision on TriSAR** (0.52–0.60, 0.56–0.60 on well-formed frames) is below the 0.70 bar.
 - **A preprocessing bug:** per-frame thermal normalisation turns a dead thermal channel into noise, and models hallucinate on it.
 - **Distillation on LLVIP** gave no F1 gain over self-training.

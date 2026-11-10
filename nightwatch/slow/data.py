@@ -111,6 +111,7 @@ def sft_collate(batch, pad_id):
             "image_grid_thw": torch.cat([b["image_grid_thw"] for b in batch]),
             "thermal": torch.stack([b["thermal"] for b in batch]),
             **({"lidar": torch.stack([b["lidar"] for b in batch])} if "lidar" in batch[0] else {}),
+            **({k: torch.stack([b[k] for b in batch]) for k in ("cell_y", "cell_r") if k in batch[0]}),
             **({"mm_token_type_ids": mm} if mm is not None else {})}
 
 

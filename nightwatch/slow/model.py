@@ -16,6 +16,7 @@ fork any transformers code and works for generation (the vision tower runs once 
 """
 from __future__ import annotations
 
+import math
 import os
 
 import timm
@@ -141,23 +142,78 @@ class PCTokens(nn.Module):
     """Mode tri_pc: the LiDAR image's 320 merged visual tokens are replaced by projected frozen Utonia features.
     Cells without a LiDAR return (and LiDAR switched off) get a learned "no return" token. The LiDAR slot's deepstack
     features are zeroed, so LiDAR reaches the LM only through these tokens. Token layout and M-RoPE positions are
-    unchanged from mode `tri` (the black range image stays as a placeholder)."""
+    unchanged from mode `tri` (the black range image stays as a placeholder).
 
-    def __init__(self, d_model: int, d_in: int = 1225, hidden: int = 1024, n_img: int = 3, slot: int = 2, n_tok: int = 320):
+    tri_pc3 additions (all off by default, so tri_pc / tri_pc2 checkpoints load and behave as before):
+      d_geo > 0   the grid carries per-cell [min range, mean range, mean height] after the 1225 feature channels;
+                  they enter through their own small MLP (Fourier features of range), added to the projected token
+      pos         a learned per-cell embedding in image coordinates (zero-init), like the ViT's own position signal
+      aux         a linear head on the projected token: person-in-cell logit and person range. Its loss keeps a
+                  gradient on the projector that does not depend on the LM choosing to read LiDAR."""
+
+    D_FEAT = 1225
+    GEO_WAVELEN = (2.0, 5.0, 10.0, 20.0, 40.0, 80.0)
+
+    def __init__(self, d_model: int, d_in: int = 1225, hidden: int = 1024, n_img: int = 3, slot: int = 2, n_tok: int = 320,
+                 d_geo: int | None = None):
         super().__init__()
+        if d_geo is None:
+            d_geo = 3 if os.environ.get("NW_PC_GEO", "0") != "0" else 0
         self.proj = nn.Sequential(nn.LayerNorm(d_in), nn.Linear(d_in, hidden), nn.GELU(), nn.Linear(hidden, d_model))
         self.no_return = nn.Parameter(torch.randn(d_model) * 0.02)
-        self.n_img, self.slot, self.n_tok = n_img, slot, n_tok
+        self.n_img, self.slot, self.n_tok, self.d_geo = n_img, slot, n_tok, d_geo
+        if d_geo:
+            self.geo = nn.Sequential(nn.Linear(3 + 2 * len(self.GEO_WAVELEN), 256), nn.GELU(), nn.Linear(256, d_model))
+            self.pos = nn.Parameter(torch.zeros(n_tok, d_model))
+            self.aux = nn.Linear(d_model, 2)
         # tri_pc2: rescale LiDAR tokens to the per-sample RMS of the camera/thermal tokens (saved in fusion.pt)
         self.register_buffer("norm_match", torch.tensor(float(os.environ.get("NW_PC_NORMMATCH", "0"))))
         self.extra = {"lidar": None}           # train/infer pass the token grid via set_extra({"lidar": ...})
-        self._g, self._ratio = None, {}
+        self._g, self._ratio, self._aux = None, {}, None
 
     def set_thermal(self, t):
         pass
 
     def set_extra(self, tensors: dict):
         self._g = tensors.get("lidar")
+
+    def _geo_feats(self, geo):
+        r = geo[..., 0:1]
+        w = torch.tensor(self.GEO_WAVELEN, device=geo.device, dtype=geo.dtype)
+        ph = 2 * math.pi * r / w
+        return torch.cat([r / 60.0, geo[..., 1:2] / 60.0, geo[..., 2:3] / 5.0, ph.sin(), ph.cos()], -1)
+
+    def tokens(self, g, target_rms=None):
+        """g (B, 320, 1225 [+3]) -> (tokens (B, 320, D) float32-or-param dtype, has_return (B, 320) bool).
+        target_rms (B, 1, 1): per-sample RMS the tokens are rescaled to when norm_match is on."""
+        dt = next(self.proj.parameters()).dtype
+        g = g.to(dt)
+        has = g[..., self.D_FEAT - 1] > 0                                           # log1p(count) > 0
+        tok = self.proj(g[..., :self.D_FEAT])
+        if self.d_geo:
+            tok = tok + self.geo(self._geo_feats(g[..., self.D_FEAT:self.D_FEAT + 3]))
+        tok = torch.where(has.unsqueeze(-1), tok, self.no_return.to(tok.dtype).expand_as(tok))
+        if self.d_geo:
+            tok = tok + self.pos.to(tok.dtype)
+        unit = tok / tok.float().pow(2).mean(-1, keepdim=True).sqrt().clamp(min=1e-6).to(tok.dtype)
+        if self.d_geo:
+            self._aux = (self.aux(unit), has)                                       # (B, 320, 2), (B, 320)
+        if float(self.norm_match) > 0 and target_rms is not None:
+            tok = unit * target_rms.to(tok.dtype)
+        return tok, has
+
+    def aux_loss(self, cell_y, cell_r):
+        """Person-in-cell BCE (cells with a LiDAR return) + smooth-L1 on person range / 10 m (person cells with a return)."""
+        out, has = self._aux
+        out = out.float()
+        y, r = cell_y.to(out.device).float(), cell_r.to(out.device).float()
+        if not has.any():
+            return out.sum() * 0.0, {}
+        pw = torch.tensor(8.0, device=out.device)
+        bce = F.binary_cross_entropy_with_logits(out[..., 0][has], y[has], pos_weight=pw)
+        m = has & (y > 0.5)
+        reg = F.smooth_l1_loss(out[..., 1][m], r[m] / 10.0) if m.any() else out.sum() * 0.0
+        return bce + reg, {"aux_bce": float(bce), "aux_range": float(reg)}
 
     def hook(self, module, args, output):
         g = self._g
@@ -168,13 +224,9 @@ class PCTokens(nn.Module):
         per = self.n_img * self.n_tok
         if po.shape[0] != B * per:
             raise RuntimeError(f"tri_pc expects {B}x{per} visual tokens, got {po.shape[0]}")
-        tok = self.proj(g.to(next(self.proj.parameters()).dtype))                    # (B, 320, D)
-        empty = (g[..., -1] <= 0).unsqueeze(-1)                                      # log1p(count) == 0
-        tok = torch.where(empty, self.no_return.to(tok.dtype).expand_as(tok), tok)
         po4 = po.view(B, self.n_img, self.n_tok, -1).clone()
-        if float(self.norm_match) > 0:
-            target = po4[:, :self.slot].detach().float().pow(2).mean(-1).sqrt().mean(dim=(1, 2)).view(B, 1, 1)
-            tok = tok / tok.float().pow(2).mean(-1, keepdim=True).sqrt().clamp(min=1e-6) * target
+        target = po4[:, :self.slot].detach().float().pow(2).mean(-1).sqrt().mean(dim=(1, 2)).view(B, 1, 1)
+        tok, _ = self.tokens(g, target)
         tok = tok.to(po.dtype)
         self._ratio = {"pc_norm_ratio": float(tok.detach().float().norm(dim=-1).mean() / po4[:, :self.slot].detach().float().norm(dim=-1).mean().clamp(min=1e-6))}
         po4[:, self.slot] = tok
@@ -234,9 +286,11 @@ def load_slow_head(model_path: str, mode: str, lora: dict | None = None, adapter
             fusion.load_state_dict(torch.load(os.path.join(adapter_dir, "fusion.pt"), map_location=device))
         model.model.visual.register_forward_hook(fusion.hook)
     if mode == "tri_pc":
-        fusion = PCTokens(model.config.text_config.hidden_size).to(device)
-        if adapter_dir:
-            sd = torch.load(os.path.join(adapter_dir, "fusion.pt"), map_location=device)
+        sd = torch.load(os.path.join(adapter_dir, "fusion.pt"), map_location=device) if adapter_dir else None
+        # a checkpoint decides its own layout (tri_pc3 has the geo / pos / aux parts); a new model follows NW_PC_GEO
+        fusion = PCTokens(model.config.text_config.hidden_size,
+                          d_geo=(3 if "pos" in sd else 0) if sd is not None else None).to(device)
+        if sd is not None:
             sd.setdefault("norm_match", torch.tensor(0.0, device=device))   # tri_pc v1 checkpoints predate the buffer
             fusion.load_state_dict(sd)
         model.model.visual.register_forward_hook(fusion.hook)

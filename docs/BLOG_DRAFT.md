@@ -16,7 +16,7 @@ I set out to answer three questions:
 <table>
 <thead><tr><th></th><th>Question</th><th>Short answer</th></tr></thead>
 <tbody>
-<tr><td><b>Fusion</b></td><td>How should a 9B VLM receive thermal and LiDAR so that it actually uses them?</td><td>Thermal as an extra image works, where my custom fusion branch lost or was ignored. LiDAR is ignored: as an image, as native point-cloud tokens, and even when training forces it.</td></tr>
+<tr><td><b>Fusion</b></td><td>How should a 9B VLM receive thermal and LiDAR so that it actually uses them?</td><td>Thermal as an extra image works, where my custom fusion branch lost or was ignored. LiDAR took three attempts. The VLM ignored it until I pre-aligned the point-cloud tokens and trained on LiDAR alone first. Now it reads LiDAR and ranges better with it, but in the unseen forest it turns clutter into people.</td></tr>
 <tr><td><b>Distillation</b></td><td>Can the VLM teach a small edge detector?</td><td>On familiar data, no better than self-training. On a truly new site, yes: F1 0.13 → 0.46 without a single human label.</td></tr>
 <tr><td><b>New sites</b></td><td>Does it hold up where it was never trained?</td><td>Partly. In an unseen forest at night the VLM goes from blind (0.00) to 0.44. At an unseen harbour, 75 % of the gap to human labels is closed.</td></tr>
 </tbody>
@@ -166,7 +166,7 @@ zero there, and the models only differ in whether they stay silent or invent lis
 well-formed frames the two-image and three-image models tie (0.546 vs 0.540). **LiDAR as an image adds nothing**, and
 the bug to fix is in my preprocessing, not in the model.
 
-**Last try: a native point-cloud encoder.** Point-cloud foundation models are the natural native encoder for LiDAR, so I
+**Second try: a native point-cloud encoder.** Point-cloud foundation models are the natural native encoder for LiDAR, so I
 fed the raw LiDAR through Utonia, a self-supervised point-cloud transformer, frozen, and let a small trained projector
 put its features into the LiDAR image's token slots. First I checked the features are worth it. A linear probe for
 "person in this cell" scores AP 0.77 on lab validation, against 0.27 for the range image the VLM had been reading
@@ -186,9 +186,69 @@ missing, not from LiDAR.
 
 ![Utonia point-cloud features per VLM token, next to the range image the VLM got](/nightwatch/fig_utonia_tokens.png)
 
-On the full report, where box, posture and distance must all be right, the camera + thermal model is slightly better
-(0.31 vs 0.29). My hypothesis for the ignored LiDAR is the frozen image encoder: it was pretrained on photos, and
-nothing taught it to read a colour-coded range image.
+**Third try: teach the tokens first, then the model.** The logs of the failed runs showed what went wrong. The
+projector's gradient fell by a factor of 50 to 100 within the first 100 to 200 steps. Camera and thermal already
+solved the lab, so the language model stopped asking the LiDAR tokens for anything. And my 15 % of LiDAR-only samples
+added up to about 36 optimiser steps, which is nothing. So I changed the order of training:
+
+1. **Pre-align the projector, without the language model.** For every cell with a LiDAR return, the projected token
+   should look like the token the VLM's own image encoder produces for the thermal image at that cell. A small linear
+   head on the same token also has to say whether a person is in the cell and how far away. This takes 17 minutes.
+2. **Fine-tune with LiDAR as the only sensor** for two epochs.
+3. **Only then train on all three sensors.**
+
+I also gave each token the measured range of its cell. The earlier tokens never carried that explicitly, which
+explains why distance never improved.
+
+After step 2 the VLM finds people from the point cloud alone: F1 0.48 on held-out lab sequences with camera and
+thermal switched off. On the lab test sequences it later scores 0.49, where the earlier runs scored 0.00. Two
+controls show where that comes from (lab validation,
+LiDAR as the only sensor, one seed each):
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>LiDAR input, trained as the only sensor</th><th>F1</th><th>Recall at 20–40 m</th></tr></thead>
+<tbody>
+<tr><td><b>Point-cloud tokens, pre-aligned</b></td><td><b>0.48</b></td><td><b>0.31</b></td></tr>
+<tr><td>Range image through the VLM's image encoder</td><td>0.43</td><td>0.15</td></tr>
+<tr><td>Point-cloud tokens, no pre-alignment</td><td>0.14</td><td>0.10</td></tr>
+</tbody>
+</table>
+</div>
+
+The pre-alignment is what makes the tokens readable. The second row is the one that stung. The plain range image,
+which I had written off as "ignored", is read nearly as well once it is the only thing the model gets. The VLM never
+lacked the ability to read LiDAR. It lacked a reason to. The point-cloud encoder's real advantage shows at longer
+range.
+
+Then the full three-sensor model on the test set (2,751 frames, one seed):
+
+<div class="table-wrap">
+<table>
+<thead><tr><th></th><th>Held-out lab F1</th><th>Unseen forest F1</th><th>Forest precision</th><th>Forest distance error</th></tr></thead>
+<tbody>
+<tr><td>Second try (ignores LiDAR)</td><td>0.86</td><td><b>0.51</b></td><td>0.54</td><td>10.2 m</td></tr>
+<tr><td><b>Third try, all sensors</b></td><td>0.86</td><td>0.21</td><td>0.17</td><td><b>1.8 m</b></td></tr>
+<tr><td>Third try, LiDAR switched off</td><td>0.85</td><td>0.48</td><td>0.68</td><td>4.5 m</td></tr>
+<tr><td>Third try, LiDAR only (600 frames)</td><td>0.49</td><td>0.05</td><td>0.04</td><td>–</td></tr>
+</tbody>
+</table>
+</div>
+
+In the lab nothing is lost, and the model still works at 0.49 with both cameras dead. In the forest LiDAR does what
+it should for range: on the people the model finds, distance error drops from 4.5 m to 1.8 m. And then it wrecks
+detection. Precision falls from 0.68 to 0.17, because the model now reports people it reads out of forest point
+clouds, and the only point clouds it has ever seen are from a lab.
+
+I tried two variants of the last stage. Carrying the LiDAR-only adapter into the joint stage hurt even the lab
+(0.64); starting the adapter fresh on the pre-aligned projector fixed that, and it is the model in the table.
+Removing the LiDAR-only samples from the last stage was meant to stop the forest false alarms, and did not
+(forest F1 0.27 at precision 0.23, against 0.46 with LiDAR off). So getting a VLM to use a sensor and getting it to use that sensor well at a new site are two
+separate problems, and I solved only the first. The detector I would deploy today is still the one that ignores
+LiDAR. These third-try numbers are from a single seed, so read them as provisional.
+
+On the full report, where box, posture and distance must all be right, the camera + thermal model is still slightly
+ahead of the three-image model (0.31 vs 0.29).
 
 **The fast head on TriSAR runs on LiDAR.** Switching LiDAR off drops it from 0.37 to 0.22; switching the camera off
 changes nothing. A per-frame thermal level match in training and inference made thermal a second sensor it uses:
@@ -266,7 +326,9 @@ helped on LLVIP hurts here, because a student that barely fires vetoes most real
   camera dropout, keeping the lab people as targets on black frames. Without dropout the same model reported **zero**.
   The augmentation taught "black camera ⇒ there are people", and only an unseen site exposed it.
 - **My side-branch fusion** lost to plain multi-image input on LLVIP and was ignored on TriSAR.
-- **LiDAR is still unused** by the VLM, as an image and as native point-cloud tokens, and TriSAR precision (0.52–0.60) is below my bar.
+- **LiDAR took three attempts and is still not solved.** The VLM now reads it and ranges better with it, but at the
+  unseen forest it invents people from point-cloud clutter. TriSAR precision (0.52–0.60 for the best detector) is
+  below my bar.
 - **Single seeds lie.** One student seed gave 0.866 and looked like "the student matches the oracle"; another gave
   0.830. Every claim here uses three seeds or a paired bootstrap.
 - **Hand-defined site-memory events.** A "person at the water's edge" region was wrong and fired on almost every

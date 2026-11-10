@@ -31,7 +31,8 @@ COUNT_PROMPT = T.COUNT_PROMPTS[0]
 # 640x512 thermal-frame resolution (20x16 = 320 merged tokens each). Side-branch fusion was ignored on TriSAR.
 MULTI = {"thermal_i": ("t",), "rgbt_i": ("rgb", "t"), "tri": ("rgb", "t", "l"), "tri_pc": ("rgb", "t", "l")}
 PC_DIR = os.environ.get("NW_PC_DIR", "data/trisar_pc")     # frozen Utonia token grids (nightwatch.slow.pc_encode)
-PC_DIM = 1225                                              # 1224 Utonia features + log(1 + points in cell)
+PC_GEO = os.environ.get("NW_PC_GEO", "0") != "0"            # tri_pc3: append per-cell [min range, mean range, mean height]
+PC_DIM = 1225 + (3 if PC_GEO else 0)                       # 1224 Utonia features + log(1 + points in cell) [+ geo]
 SENSOR_LABEL = {"rgb": "Visible camera:", "t": "Thermal camera:", "l": "LiDAR range image (near = red, far = blue, black = no return):"}
 MULTI_DROP = float(os.environ.get("NW_MULTI_DROP", "0.3"))
 LIDAR_ONLY_P = float(os.environ.get("NW_LIDAR_ONLY_P", "0"))   # tri_pc2: P(camera + thermal off, LiDAR kept)   # P(exactly one sensor blacked out) for >= 2 sensors
@@ -174,7 +175,8 @@ def pc_grid(fid, crop=None, off=False):
     if off:
         return torch.zeros(gh * gw, PC_DIM)
     z = _np.load(os.path.join(PC_DIR, f"{fid}.npz"))
-    g = _np.concatenate([z["feat"].astype(_np.float32), _np.log1p(z["count"].astype(_np.float32))[:, None]], 1)
+    g = _np.concatenate([z["feat"].astype(_np.float32), _np.log1p(z["count"].astype(_np.float32))[:, None]]
+                        + ([z["geo"].astype(_np.float32)] if PC_GEO else []), 1)
     if crop is not None:
         x0, y0, x1, y1 = crop
         cx = x0 + (_np.arange(gw) + 0.5) * (x1 - x0) / gw
@@ -182,6 +184,30 @@ def pc_grid(fid, crop=None, off=False):
         src = (_np.clip(cy // 32, 0, gh - 1).astype(int)[:, None] * gw + _np.clip(cx // 32, 0, gw - 1).astype(int)[None, :])
         g = g[src.reshape(-1)]
     return torch.from_numpy(g)
+
+
+def cell_targets(persons, wh):
+    """Per-cell supervision for the point-cloud token aux head: (320,) person-in-cell and (320,) person range [m].
+    Same rule as the V5 probe (box covers >= 30 % of the 32-px cell, or the cell holds the box centre); boxes are in
+    the coordinates of the (possibly cropped) frame of size wh and are rescaled to the 640x512 token grid."""
+    gh, gw, c = FH // 32, FW // 32, 32
+    y, r = torch.zeros(gh, gw), torch.zeros(gh, gw)
+    sx, sy = FW / wh[0], FH / wh[1]
+    for p in sorted(persons, key=lambda p: -p["range_m"]):          # nearer persons overwrite farther ones
+        x1, y1, x2, y2 = p["box"][0] * sx, p["box"][1] * sy, p["box"][2] * sx, p["box"][3] * sy
+        cells = set()
+        cx, cy = int((x1 + x2) / 2 // c), int((y1 + y2) / 2 // c)
+        if 0 <= cy < gh and 0 <= cx < gw:
+            cells.add((cy, cx))
+        for gy in range(max(0, int(y1 // c)), min(gh, int(y2 // c) + 1)):
+            for gx in range(max(0, int(x1 // c)), min(gw, int(x2 // c) + 1)):
+                ix = max(0, min(x2, (gx + 1) * c) - max(x1, gx * c))
+                iy = max(0, min(y2, (gy + 1) * c) - max(y1, gy * c))
+                if ix * iy >= 0.3 * c * c:
+                    cells.add((gy, gx))
+        for gy, gx in cells:
+            y[gy, gx], r[gy, gx] = 1.0, float(p["range_m"])
+    return y.reshape(-1), r.reshape(-1)
 
 
 def _apply_cond(rgb, th, li, cond):
@@ -254,6 +280,7 @@ class TriSARSFT(Dataset):
         return {**out, "input_ids": ids, "labels": labels, "pixel_values": enc["pixel_values"],
                 "image_grid_thw": enc["image_grid_thw"], "thermal": thermal_tensor(th),
                 "lidar": pc_grid(f["id"], crop, lidar_dropped) if self.mode == "tri_pc" else lidar_tensor(li),
+                **(dict(zip(("cell_y", "cell_r"), cell_targets(persons, wh))) if self.mode == "tri_pc" else {}),
                 "task": task}
 
 
